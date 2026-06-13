@@ -1123,3 +1123,268 @@ body {
         width: 100%;
     }
 }
+
+/* --- SETTINGS PANEL & TREND BADGES --- */
+.net-worth-row {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    margin-bottom: 0.5rem;
+}
+
+.trend-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    padding: 0.25rem 0.6rem;
+    border-radius: 12px;
+    font-size: 0.8rem;
+    font-weight: 600;
+    border: 1px solid transparent;
+    transition: var(--transition-smooth);
+}
+
+.trend-badge.up {
+    background: rgba(16, 185, 129, 0.15);
+    color: var(--accent-emerald);
+    border-color: rgba(16, 185, 129, 0.25);
+}
+
+.trend-badge.down {
+    background: rgba(244, 63, 94, 0.15);
+    color: var(--accent-rose);
+    border-color: rgba(244, 63, 94, 0.25);
+}
+
+.trend-badge.neutral {
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--text-secondary);
+    border-color: rgba(255, 255, 255, 0.1);
+}
+
+#settings-view {
+    animation: fadeIn 0.3s ease-out;
+}
+
+.settings-wrapper {
+    max-width: 800px;
+    margin: 0 auto;
+    padding: 1rem 0;
+}
+
+.settings-card {
+    padding: 2.5rem;
+    background: rgba(15, 18, 36, 0.4);
+    border: 1px solid var(--card-border);
+    backdrop-filter: blur(20px);
+    border-radius: 24px;
+}
+
+.settings-header {
+    display: flex;
+    align-items: center;
+    gap: 1.5rem;
+    margin-bottom: 2.5rem;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    padding-bottom: 1.5rem;
+}
+
+.settings-header-icon {
+    font-size: 2.5rem;
+    color: var(--accent-cyan);
+    background: rgba(6, 182, 212, 0.1);
+    padding: 1rem;
+    border-radius: 16px;
+    border: 1px solid rgba(6, 182, 212, 0.2);
+}
+
+.settings-subtitle {
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+    margin-top: 0.25rem;
+}
+
+#settings-form {
+    display: flex;
+    flex-direction: column;
+    gap: 2rem;
+}
+
+.form-row {
+    display: flex;
+    gap: 1.5rem;
+    width: 100%;
+}
+
+.form-row > .form-group {
+    flex: 1;
+}
+
+.form-group {
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+}
+
+.form-group.full-width {
+    width: 100%;
+}
+
+.form-group label {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.input-with-icon {
+    position: relative;
+    display: flex;
+    align-items: center;
+}
+
+.input-with-icon i {
+    position: absolute;
+    left: 1rem;
+    color: var(--text-secondary);
+    pointer-events: none;
+}
+
+.input-with-icon input {
+    padding-left: 2.5rem;
+}
+
+#settings-form input,
+#settings-form select {
+    width: 100%;
+    padding: 0.8rem 1rem;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid var(--card-border);
+    border-radius: 12px;
+    color: var(--text-primary);
+    font-family: inherit;
+    font-size: 0.95rem;
+    transition: var(--transition-smooth);
+}
+
+#settings-form input:focus,
+#settings-form select:focus {
+    outline: none;
+    border-color: var(--accent-cyan);
+    background: rgba(255, 255, 255, 0.05);
+    box-shadow: 0 0 0 3px rgba(6, 182, 212, 0.15);
+}
+
+.risk-selector {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 1rem;
+    margin-top: 0.25rem;
+}
+
+.risk-option {
+    position: relative;
+    cursor: pointer;
+}
+
+.risk-option input[type="radio"] {
+    position: absolute;
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+
+.risk-card {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    padding: 1.25rem;
+    background: rgba(255, 255, 255, 0.02);
+    border: 1px solid var(--card-border);
+    border-radius: 16px;
+    transition: var(--transition-smooth);
+    height: 100%;
+    gap: 0.5rem;
+}
+
+.risk-card i {
+    font-size: 1.5rem;
+    margin-bottom: 0.25rem;
+    transition: var(--transition-smooth);
+}
+
+.risk-name {
+    font-weight: 700;
+    font-size: 1rem;
+    color: var(--text-primary);
+}
+
+.risk-desc {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    line-height: 1.4;
+}
+
+/* Hover / Selection States */
+.risk-option:hover .risk-card {
+    background: rgba(255, 255, 255, 0.04);
+    border-color: rgba(255, 255, 255, 0.15);
+}
+
+/* Checked States */
+.risk-option input[type="radio"]:checked + .risk-card.conservative {
+    border-color: var(--accent-emerald);
+    background: rgba(16, 185, 129, 0.05);
+    box-shadow: 0 0 15px rgba(16, 185, 129, 0.15);
+}
+
+.risk-option input[type="radio"]:checked + .risk-card.conservative i {
+    color: var(--accent-emerald);
+}
+
+.risk-option input[type="radio"]:checked + .risk-card.moderate {
+    border-color: var(--accent-cyan);
+    background: rgba(6, 182, 212, 0.05);
+    box-shadow: 0 0 15px rgba(6, 182, 212, 0.15);
+}
+
+.risk-option input[type="radio"]:checked + .risk-card.moderate i {
+    color: var(--accent-cyan);
+}
+
+.risk-option input[type="radio"]:checked + .risk-card.aggressive {
+    border-color: var(--accent-rose);
+    background: rgba(244, 63, 94, 0.05);
+    box-shadow: 0 0 15px rgba(244, 63, 94, 0.15);
+}
+
+.risk-option input[type="radio"]:checked + .risk-card.aggressive i {
+    color: var(--accent-rose);
+}
+
+.settings-actions {
+    display: flex;
+    justify-content: flex-end;
+    border-top: 1px solid rgba(255, 255, 255, 0.06);
+    padding-top: 1.5rem;
+    margin-top: 1rem;
+}
+
+#save-settings-btn {
+    min-width: 160px;
+    height: 44px;
+    font-weight: 600;
+}
+
+@media (max-width: 768px) {
+    .form-row {
+        flex-direction: column;
+    }
+    .risk-selector {
+        grid-template-columns: 1fr;
+    }
+    .settings-card {
+        padding: 1.5rem;
+    }
+}

@@ -3,6 +3,7 @@ node_modules/
 
 # Local configuration files
 .env
+database.json
 
 # Log files
 npm-debug.log*

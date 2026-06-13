@@ -237,6 +237,15 @@ document.addEventListener('DOMContentLoaded', () => {
                 simulatedBadge.classList.add('hidden');
             }
 
+            // Fetch Trend History
+            try {
+                const historyRes = await fetch('/api/history');
+                const history = await historyRes.json();
+                updateTrendBadge(netWorth, history);
+            } catch (histErr) {
+                console.warn('[History] Failed to load trend:', histErr);
+            }
+
             // Load AI Advisor recommendations
             fetchAdvisorTips();
 
@@ -375,10 +384,17 @@ document.addEventListener('DOMContentLoaded', () => {
     const insightsContainer = document.getElementById('insights-container');
     const dashboardView = document.getElementById('dashboard-view');
     const chatView = document.getElementById('chat-view');
+    const settingsView = document.getElementById('settings-view');
     const navDashboard = document.getElementById('nav-dashboard');
     const navChat = document.getElementById('nav-chat');
+    const navSettings = document.getElementById('nav-settings');
     const backToDashboardBtn = document.getElementById('back-to-dashboard-btn');
     const viewTitle = document.getElementById('view-title');
+
+    // Settings elements
+    const settingsForm = document.getElementById('settings-form');
+    const settingsSalary = document.getElementById('settings-salary');
+    const settingsPayFrequency = document.getElementById('settings-pay-frequency');
 
     // Chat sidebar elements
     const chatCashVal = document.getElementById('chat-cash-val');
@@ -399,7 +415,9 @@ document.addEventListener('DOMContentLoaded', () => {
     function showDashboard() {
         dashboardView.classList.remove('hidden');
         chatView.classList.add('hidden');
+        settingsView.classList.add('hidden');
         navChat.classList.remove('active');
+        navSettings.classList.remove('active');
         navDashboard.classList.add('active');
         viewTitle.textContent = 'Overview';
     }
@@ -407,7 +425,9 @@ document.addEventListener('DOMContentLoaded', () => {
     function showChat() {
         dashboardView.classList.add('hidden');
         chatView.classList.remove('hidden');
+        settingsView.classList.add('hidden');
         navDashboard.classList.remove('active');
+        navSettings.classList.remove('active');
         navChat.classList.add('active');
         viewTitle.textContent = 'AI Financial Advisor';
 
@@ -415,6 +435,84 @@ document.addEventListener('DOMContentLoaded', () => {
         chatCashVal.textContent = formatCurrency(totalCash);
         chatCryptoVal.textContent = formatCurrency(totalCrypto);
         chatCreditVal.textContent = formatCurrency(totalCredit);
+    }
+
+    function showSettings() {
+        dashboardView.classList.add('hidden');
+        chatView.classList.add('hidden');
+        settingsView.classList.remove('hidden');
+        navDashboard.classList.remove('active');
+        navChat.classList.remove('active');
+        navSettings.classList.add('active');
+        viewTitle.textContent = 'Settings & Profile';
+    }
+
+    // Fetch and populate Profile Settings
+    async function fetchProfileSettings() {
+        try {
+            const res = await fetch('/api/profile');
+            const data = await res.json();
+            
+            settingsSalary.value = data.salary || '';
+            settingsPayFrequency.value = data.payFrequency || 'Monthly';
+            
+            const riskValue = data.riskAppetite || 'Moderate';
+            const radio = document.querySelector(`input[name="settings-risk"][value="${riskValue}"]`);
+            if (radio) radio.checked = true;
+        } catch (e) {
+            console.error('Error fetching settings:', e);
+        }
+    }
+
+    // Render trend badge
+    function updateTrendBadge(currentNetWorth, history) {
+        const trendEl = document.getElementById('net-worth-trend');
+        if (!trendEl) return;
+
+        if (!history || history.length < 2) {
+            trendEl.className = 'trend-badge neutral';
+            trendEl.querySelector('.trend-icon').className = 'trend-icon fa-solid fa-arrows-left-right';
+            trendEl.querySelector('.trend-pct').textContent = '0.0%';
+            trendEl.classList.remove('hidden');
+            return;
+        }
+
+        let previousSnapshot = history[history.length - 2];
+        const todayStr = new Date().toLocaleDateString('en-CA');
+        let baseline = previousSnapshot.netWorth;
+        
+        if (history[history.length - 1].date !== todayStr) {
+            baseline = history[history.length - 1].netWorth;
+        }
+
+        if (baseline === 0) {
+            trendEl.className = 'trend-badge neutral';
+            trendEl.querySelector('.trend-icon').className = 'trend-icon fa-solid fa-arrows-left-right';
+            trendEl.querySelector('.trend-pct').textContent = '0.0%';
+            trendEl.classList.remove('hidden');
+            return;
+        }
+
+        const change = currentNetWorth - baseline;
+        const pctChange = (change / Math.abs(baseline)) * 100;
+
+        const iconEl = trendEl.querySelector('.trend-icon');
+        const pctEl = trendEl.querySelector('.trend-pct');
+
+        if (pctChange > 0.05) {
+            trendEl.className = 'trend-badge up';
+            iconEl.className = 'trend-icon fa-solid fa-arrow-trend-up';
+            pctEl.textContent = `+${pctChange.toFixed(1)}%`;
+        } else if (pctChange < -0.05) {
+            trendEl.className = 'trend-badge down';
+            iconEl.className = 'trend-icon fa-solid fa-arrow-trend-down';
+            pctEl.textContent = `${pctChange.toFixed(1)}%`;
+        } else {
+            trendEl.className = 'trend-badge neutral';
+            iconEl.className = 'trend-icon fa-solid fa-arrows-left-right';
+            pctEl.textContent = '0.0%';
+        }
+        trendEl.classList.remove('hidden');
     }
 
     // Render message bubbles in chat
@@ -574,6 +672,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     navDashboard.addEventListener('click', (e) => { e.preventDefault(); showDashboard(); });
     navChat.addEventListener('click', (e) => { e.preventDefault(); showChat(); });
+    navSettings.addEventListener('click', (e) => { e.preventDefault(); showSettings(); });
     backToDashboardBtn.addEventListener('click', showDashboard);
 
     chatForm.addEventListener('submit', (e) => {
@@ -584,7 +683,31 @@ document.addEventListener('DOMContentLoaded', () => {
         sendChatMessage(text);
     });
 
+    settingsForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const salary = parseFloat(settingsSalary.value) || 0;
+        const payFrequency = settingsPayFrequency.value;
+        const riskAppetite = document.querySelector('input[name="settings-risk"]:checked').value;
+
+        showToast('Saving settings...', 'info');
+
+        try {
+            const res = await fetch('/api/profile', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ salary, payFrequency, riskAppetite })
+            });
+            const data = await res.json();
+            showToast('Settings saved successfully!', 'success');
+            fetchDashboardData();
+            showDashboard();
+        } catch (err) {
+            showToast('Failed to save settings.', 'error');
+        }
+    });
+
     // Initial load
+    fetchProfileSettings();
     fetchDashboardData();
 });
 

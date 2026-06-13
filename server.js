@@ -5,6 +5,7 @@ const crypto = require('crypto');
 const querystring = require('querystring');
 const { Configuration, PlaidApi, PlaidEnvironments } = require('plaid');
 const { GoogleGenerativeAI } = require('@google/generative-ai');
+const db = require('./db');
 
 // Load environment variables
 dotenv.config();
@@ -33,10 +34,10 @@ const PORT = process.env.PORT || 3000;
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
-// In-memory token storage (for demonstration purposes)
+// Local Database & In-memory token store
 const tokenStore = {
-  plaidAccessTokens: [],
-  krakenCredentials: null // Stored in-memory if entered via UI, otherwise uses .env
+  plaidAccessTokens: db.getPlaidTokens(),
+  krakenCredentials: db.getKrakenCredentials()
 };
 
 // Check if Plaid is configured
@@ -64,10 +65,13 @@ if (isPlaidConfigured) {
   console.warn('[Plaid] WARNING: Credentials not configured. Server will run in Simulator Mode.');
 }
 
-// Check if Kraken is configured in .env
+// Check if Kraken is configured in .env or database
 const getKrakenKeys = () => {
   if (tokenStore.krakenCredentials) {
-    return tokenStore.krakenCredentials;
+    return {
+      key: tokenStore.krakenCredentials.key || tokenStore.krakenCredentials.apiKey,
+      secret: tokenStore.krakenCredentials.secret || tokenStore.krakenCredentials.apiSecret
+    };
   }
   const key = process.env.KRAKEN_API_KEY;
   const secret = process.env.KRAKEN_API_SECRET;
@@ -112,6 +116,7 @@ app.post('/api/exchange_public_token', async (req, res) => {
     console.log('[Plaid Simulator] Simulated exchange for public token:', public_token);
     const mockAccessToken = `access-sandbox-${crypto.randomUUID()}`;
     tokenStore.plaidAccessTokens.push(mockAccessToken);
+    db.addPlaidToken(mockAccessToken);
     return res.json({ success: true, simulated: true });
   }
 
@@ -121,6 +126,7 @@ app.post('/api/exchange_public_token', async (req, res) => {
     });
     const accessToken = response.data.access_token;
     tokenStore.plaidAccessTokens.push(accessToken);
+    db.addPlaidToken(accessToken);
     res.json({ success: true, item_id: response.data.item_id });
   } catch (error) {
     console.error('[Plaid] Error exchanging token:', error.response ? error.response.data : error.message);
@@ -231,6 +237,7 @@ app.post('/api/kraken/credentials', (req, res) => {
     return res.status(400).json({ error: 'API Key and API Secret are required' });
   }
   tokenStore.krakenCredentials = { key: apiKey, secret: apiSecret };
+  db.saveKrakenCredentials(apiKey, apiSecret);
   res.json({ success: true });
 });
 
@@ -587,6 +594,20 @@ app.get('/api/advisor/tips', async (req, res) => {
 
   const netWorth = (totalCash + totalCrypto) - totalCredit;
 
+  // Record daily balance snapshot
+  try {
+    db.recordDailyBalance({
+      cash: totalCash,
+      crypto: totalCrypto,
+      credit: totalCredit
+    });
+  } catch (dbErr) {
+    console.error('[Database] Snapshot error:', dbErr.message);
+  }
+
+  const profile = db.getProfile();
+  const history = db.getHistory();
+
   // If neither is configured, return mock sandbox tips
   if (!isGroqConfigured && !isGeminiConfigured) {
     return res.json({
@@ -621,6 +642,11 @@ app.get('/api/advisor/tips', async (req, res) => {
   You are Aura Financial, a premium, fiduciary AI financial advisor agent. 
   Analyze the user's financial profile and generate exactly 3 highly actionable, math-driven financial tips.
   
+  USER PROFILE DETAILS:
+  - Annual Net/Gross Salary: ${formatCurrency(profile.salary)}
+  - Pay Schedule / Frequency: ${profile.payFrequency}
+  - Risk Appetite Profile: ${profile.riskAppetite} (Conservative, Moderate, Aggressive)
+
   FINANCIAL PROFILE:
   - Net Worth: ${formatCurrency(netWorth)}
   - Total Cash Assets: ${formatCurrency(totalCash)}
@@ -629,11 +655,13 @@ app.get('/api/advisor/tips', async (req, res) => {
   - Stored Accounts: ${JSON.stringify(accountsList)}
   - Crypto Holdings Details: ${JSON.stringify(holdings)}
   - Recent Transactions: ${JSON.stringify(allTransactions.slice(0, 8))}
+  - Historical Net Worth Trend (Daily Snapshots): ${JSON.stringify(history)}
   
   INSTRUCTIONS:
   1. Focus on optimizing high-interest debt, saving rate, investment gaps, and subscription leakage.
-  2. Be highly specific and do math based on their actual numbers.
-  3. Return your response in JSON format as a list of exactly 3 items.
+  2. Be highly specific and do math based on their actual numbers, salary, risk appetite, and how/when they get paid.
+  3. Analyze if their net worth history trend is positive, negative, or neutral, and incorporate suggestions to improve or maintain it.
+  4. Return your response in JSON format as a list of exactly 3 items.
   
   Format requirements:
   Return ONLY a JSON array matching this schema (do not wrap in markdown code blocks):
@@ -748,18 +776,31 @@ app.post('/api/advisor/chat', async (req, res) => {
   const totalCrypto = holdings.reduce((sum, h) => sum + h.value, 0);
   const netWorth = (bankRes.totalCash + totalCrypto) - bankRes.totalCredit;
 
+  const profile = db.getProfile();
+  const history = db.getHistory();
+
   const systemInstruction = `
   You are Aura Financial, a premium, fiduciary AI financial advisor agent. 
   You are chatting with the user about their financial health. 
   Provide objective, clear, math-driven financial advice. Reference their actual holdings, assets, and debt numbers whenever possible.
   Always format your responses cleanly in Markdown. Keep your tone professional, advisory, and helpful.
   
+  USER PROFILE DETAILS:
+  - Annual Net/Gross Salary: ${formatCurrency(profile.salary)}
+  - Pay Schedule / Frequency: ${profile.payFrequency}
+  - Risk Appetite Profile: ${profile.riskAppetite} (Conservative, Moderate, Aggressive)
+
   FINANCIAL PROFILE:
   - Net Worth: ${formatCurrency(netWorth)}
   - Total Cash Assets: ${formatCurrency(bankRes.totalCash)}
   - Total Crypto Assets: ${formatCurrency(totalCrypto)} (Holdings: ${JSON.stringify(holdings)})
   - Total Credit Debt (Liabilities): ${formatCurrency(bankRes.totalCredit)}
   - Connected Accounts: ${JSON.stringify(bankRes.accounts)}
+  - Historical Net Worth Trend (Daily Snapshots): ${JSON.stringify(history)}
+
+  INSTRUCTIONS FOR CHAT:
+  1. Base your recommendations on their salary, pay frequency, and risk appetite profile.
+  2. If they ask about saving, investing, or spending, integrate their specific profile and historical daily trend (whether net worth is going up, down, or neutral).
   `;
 
   if (!isGroqConfigured && !isGeminiConfigured) {
@@ -842,9 +883,35 @@ To enable full generative advisory responses, please configure your **GROQ_API_K
 
 // Reset Endpoint (for demo reset)
 app.post('/api/reset', (req, res) => {
+  db.clearAll();
   tokenStore.plaidAccessTokens = [];
   tokenStore.krakenCredentials = null;
   res.json({ success: true });
+});
+
+// --- PROFILE & HISTORY ENDPOINTS ---
+
+// Get Profile settings
+app.get('/api/profile', (req, res) => {
+  res.json(db.getProfile());
+});
+
+// Update Profile settings
+app.post('/api/profile', (req, res) => {
+  const { salary, payFrequency, riskAppetite } = req.body;
+  
+  const updated = db.updateProfile({
+    salary: salary !== undefined ? Number(salary) : undefined,
+    payFrequency,
+    riskAppetite
+  });
+  
+  res.json(updated);
+});
+
+// Get Net Worth balance history
+app.get('/api/history', (req, res) => {
+  res.json(db.getHistory());
 });
 
 // Start the server

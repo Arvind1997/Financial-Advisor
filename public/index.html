@@ -42,7 +42,7 @@
                 <a href="#" class="nav-item" id="nav-accounts"><i class="fa-solid fa-wallet"></i> Accounts</a>
                 <a href="#" class="nav-item" id="nav-transactions"><i class="fa-solid fa-arrows-rotate"></i> Transactions</a>
                 <a href="#" class="nav-item" id="nav-chat"><i class="fa-solid fa-robot"></i> Advisor Chat</a>
-                <a href="#" class="nav-item"><i class="fa-solid fa-gears"></i> Settings</a>
+                <a href="#" class="nav-item" id="nav-settings"><i class="fa-solid fa-gears"></i> Settings</a>
             </nav>
             
             <div class="sidebar-footer">
@@ -83,7 +83,13 @@
                     <div class="glass-card main-balance-card">
                         <div class="card-glow"></div>
                         <span class="card-category">CONSOLIDATED NET WORTH</span>
-                        <h2 class="net-worth-amount" id="net-worth">$0.00</h2>
+                        <div class="net-worth-row">
+                            <h2 class="net-worth-amount" id="net-worth">$0.00</h2>
+                            <div id="net-worth-trend" class="trend-badge neutral hidden">
+                                <i class="trend-icon fa-solid fa-arrows-left-right"></i>
+                                <span class="trend-pct">0.0%</span>
+                            </div>
+                        </div>
                         
                         <div class="asset-split-mini">
                             <div class="split-item">
@@ -236,6 +242,81 @@
                                 </button>
                             </form>
                         </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Settings View -->
+            <div id="settings-view" class="hidden">
+                <div class="settings-wrapper">
+                    <div class="glass-card settings-card">
+                        <div class="settings-header">
+                            <i class="fa-solid fa-sliders settings-header-icon"></i>
+                            <div>
+                                <h2>Financial Settings & Profile</h2>
+                                <p class="settings-subtitle">Customize your advisory baseline, salary, pay frequency, and risk parameters. These are saved locally and used by Aura AI to tailor its advice.</p>
+                            </div>
+                        </div>
+
+                        <form id="settings-form">
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label for="settings-salary">Annual Net/Gross Salary ($)</label>
+                                    <div class="input-with-icon">
+                                        <i class="fa-solid fa-dollar-sign"></i>
+                                        <input type="number" id="settings-salary" required min="0" placeholder="e.g. 120000">
+                                    </div>
+                                </div>
+                                
+                                <div class="form-group">
+                                    <label for="settings-pay-frequency">Pay Schedule (How you get paid)</label>
+                                    <select id="settings-pay-frequency" required>
+                                        <option value="Weekly">Weekly</option>
+                                        <option value="Bi-weekly">Bi-weekly</option>
+                                        <option value="Semi-monthly">Semi-monthly</option>
+                                        <option value="Monthly">Monthly</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <div class="form-row">
+                                <div class="form-group full-width">
+                                    <label>Risk Appetite Profile</label>
+                                    <div class="risk-selector">
+                                        <label class="risk-option">
+                                            <input type="radio" name="settings-risk" value="Conservative" required>
+                                            <div class="risk-card conservative">
+                                                <i class="fa-solid fa-shield-halved"></i>
+                                                <span class="risk-name">Conservative</span>
+                                                <span class="risk-desc">Focus on preserving capital and paying off liabilities.</span>
+                                            </div>
+                                        </label>
+                                        <label class="risk-option">
+                                            <input type="radio" name="settings-risk" value="Moderate" checked required>
+                                            <div class="risk-card moderate">
+                                                <i class="fa-solid fa-scale-balanced"></i>
+                                                <span class="risk-name">Moderate</span>
+                                                <span class="risk-desc">Balanced growth, moderate crypto exposure, steady savings.</span>
+                                            </div>
+                                        </label>
+                                        <label class="risk-option">
+                                            <input type="radio" name="settings-risk" value="Aggressive" required>
+                                            <div class="risk-card aggressive">
+                                                <i class="fa-solid fa-fire-flame-curved"></i>
+                                                <span class="risk-name">Aggressive</span>
+                                                <span class="risk-desc">Maximizing capital appreciation, higher crypto and equity allocation.</span>
+                                            </div>
+                                        </label>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="settings-actions">
+                                <button type="submit" class="btn btn-accent" id="save-settings-btn">
+                                    <i class="fa-solid fa-check"></i> Save Settings
+                                </button>
+                            </div>
+                        </form>
                     </div>
                 </div>
             </div>
