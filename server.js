@@ -193,10 +193,15 @@ const getKrakenSignature = (path, requestData, secret) => {
   
   const sha256 = crypto.createHash('sha256');
   sha256.update(nonce + postData);
-  const hash256 = sha256.digest('binary');
+  const hash256 = sha256.digest();
   
-  const hmac = crypto.createHmac('sha512', Buffer.from(secret, 'base64'));
-  hmac.update(path + hash256, 'binary');
+  const pathBuffer = Buffer.from(path, 'utf-8');
+  const message = Buffer.concat([pathBuffer, hash256]);
+  
+  const secretBuffer = Buffer.from(secret, 'base64');
+  const hmac = crypto.createHmac('sha512', secretBuffer);
+  hmac.update(message);
+  
   return hmac.digest('base64');
 };
 
