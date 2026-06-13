@@ -42,6 +42,9 @@ document.addEventListener('DOMContentLoaded', () => {
     let totalCrypto = 0;
     let totalCredit = 0;
     let globalAccounts = [];
+    let globalCryptoHoldings = [];
+    let assetsChartInstance = null;
+    let liabilitiesChartInstance = null;
 
     // Toast Helper
     function showToast(message, type = 'info') {
@@ -180,6 +183,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
             // Process Crypto Holdings
             totalCrypto = 0;
+            globalCryptoHoldings = krakenData.holdings || [];
             cryptoContainer.innerHTML = '';
 
             if (krakenData.holdings && krakenData.holdings.length > 0) {
@@ -406,10 +410,12 @@ document.addEventListener('DOMContentLoaded', () => {
     const chatView = document.getElementById('chat-view');
     const settingsView = document.getElementById('settings-view');
     const transactionsView = document.getElementById('transactions-view');
+    const accountsView = document.getElementById('accounts-view');
     const navDashboard = document.getElementById('nav-dashboard');
     const navChat = document.getElementById('nav-chat');
     const navSettings = document.getElementById('nav-settings');
     const navTransactions = document.getElementById('nav-transactions');
+    const navAccounts = document.getElementById('nav-accounts');
     const backToDashboardBtn = document.getElementById('back-to-dashboard-btn');
     const viewTitle = document.getElementById('view-title');
 
@@ -456,9 +462,11 @@ document.addEventListener('DOMContentLoaded', () => {
         chatView.classList.add('hidden');
         settingsView.classList.add('hidden');
         transactionsView.classList.add('hidden');
+        accountsView.classList.add('hidden');
         navChat.classList.remove('active');
         navSettings.classList.remove('active');
         navTransactions.classList.remove('active');
+        navAccounts.classList.remove('active');
         navDashboard.classList.add('active');
         viewTitle.textContent = 'Overview';
     }
@@ -468,9 +476,11 @@ document.addEventListener('DOMContentLoaded', () => {
         chatView.classList.remove('hidden');
         settingsView.classList.add('hidden');
         transactionsView.classList.add('hidden');
+        accountsView.classList.add('hidden');
         navDashboard.classList.remove('active');
         navSettings.classList.remove('active');
         navTransactions.classList.remove('active');
+        navAccounts.classList.remove('active');
         navChat.classList.add('active');
         viewTitle.textContent = 'AI Financial Advisor';
 
@@ -485,9 +495,11 @@ document.addEventListener('DOMContentLoaded', () => {
         chatView.classList.add('hidden');
         settingsView.classList.remove('hidden');
         transactionsView.classList.add('hidden');
+        accountsView.classList.add('hidden');
         navDashboard.classList.remove('active');
         navChat.classList.remove('active');
         navTransactions.classList.remove('active');
+        navAccounts.classList.remove('active');
         navSettings.classList.add('active');
         viewTitle.textContent = 'Settings & Profile';
         fetchManualAccounts();
@@ -498,12 +510,29 @@ document.addEventListener('DOMContentLoaded', () => {
         chatView.classList.add('hidden');
         settingsView.classList.add('hidden');
         transactionsView.classList.remove('hidden');
+        accountsView.classList.add('hidden');
         navDashboard.classList.remove('active');
         navChat.classList.remove('active');
         navSettings.classList.remove('active');
+        navAccounts.classList.remove('active');
         navTransactions.classList.add('active');
         viewTitle.textContent = 'Transactions Log';
         loadTransactionsPage();
+    }
+
+    function showAccounts() {
+        dashboardView.classList.add('hidden');
+        chatView.classList.add('hidden');
+        settingsView.classList.add('hidden');
+        transactionsView.classList.add('hidden');
+        accountsView.classList.remove('hidden');
+        navDashboard.classList.remove('active');
+        navChat.classList.remove('active');
+        navSettings.classList.remove('active');
+        navTransactions.classList.remove('active');
+        navAccounts.classList.add('active');
+        viewTitle.textContent = 'Accounts & Categories';
+        renderAccountsView();
     }
 
     // Fetch and populate Profile Settings
@@ -998,6 +1027,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     navDashboard.addEventListener('click', (e) => { e.preventDefault(); showDashboard(); });
+    navAccounts.addEventListener('click', (e) => { e.preventDefault(); showAccounts(); });
     navChat.addEventListener('click', (e) => { e.preventDefault(); showChat(); });
     navSettings.addEventListener('click', (e) => { e.preventDefault(); showSettings(); });
     navTransactions.addEventListener('click', (e) => { e.preventDefault(); showTransactions(); });
@@ -1282,6 +1312,241 @@ document.addEventListener('DOMContentLoaded', () => {
         } catch (err) {
             showToast('Failed to disconnect bank connection.', 'error');
         }
+    }
+
+    function renderAccountsView() {
+        if (!globalAccounts || globalAccounts.length === 0) {
+            return;
+        }
+
+        const assetsTableBody = document.getElementById('breakdown-assets-table-body');
+        const liabilitiesTableBody = document.getElementById('breakdown-liabilities-table-body');
+        
+        assetsTableBody.innerHTML = '';
+        liabilitiesTableBody.innerHTML = '';
+
+        let totalBreakdownCash = 0;
+        let totalBreakdownCrypto = totalCrypto;
+        let totalBreakdownCredit = 0;
+        let totalBreakdownLoans = 0;
+
+        const assetAccounts = [];
+        const liabilityAccounts = [];
+
+        // 1. Process Bank/Plaid & Manual accounts
+        globalAccounts.forEach(group => {
+            group.accounts.forEach(acc => {
+                const isLiability = acc.type === 'credit' || acc.type === 'loan';
+                const balance = acc.balance;
+
+                if (isLiability) {
+                    if (acc.type === 'credit') {
+                        totalBreakdownCredit += Math.abs(balance);
+                    } else if (acc.type === 'loan') {
+                        totalBreakdownLoans += Math.abs(balance);
+                    }
+                    liabilityAccounts.push({
+                        ...acc,
+                        institution: group.institution
+                    });
+                } else {
+                    totalBreakdownCash += balance;
+                    assetAccounts.push({
+                        ...acc,
+                        institution: group.institution
+                    });
+                }
+            });
+        });
+
+        // 2. Add crypto accounts from holdings
+        globalCryptoHoldings.forEach(hold => {
+            assetAccounts.push({
+                name: `${hold.amount.toFixed(4)} ${hold.asset}`,
+                institution: 'Kraken Exchange',
+                type: 'crypto',
+                subtype: 'crypto wallet',
+                balance: hold.value,
+                mask: hold.asset
+            });
+        });
+
+        // Render Asset Accounts Table
+        if (assetAccounts.length === 0) {
+            assetsTableBody.innerHTML = `<tr><td colspan="4" style="text-align: center; color: var(--text-secondary); padding: 1.5rem;">No assets registered.</td></tr>`;
+        } else {
+            assetAccounts.forEach(acc => {
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td style="font-weight: 500; padding: 12px;">${acc.name}</td>
+                    <td style="padding: 12px;">${acc.institution}</td>
+                    <td style="padding: 12px;"><span class="tx-type-label" style="background: rgba(16,185,129,0.1); color: var(--accent-emerald); border-color: rgba(16,185,129,0.2);">${(acc.subtype || acc.type).toUpperCase()}</span></td>
+                    <td style="text-align: right; font-weight: 600; color: var(--accent-emerald); padding: 12px;">${formatCurrency(acc.balance)}</td>
+                `;
+                assetsTableBody.appendChild(tr);
+            });
+        }
+
+        // Render Liability Accounts Table
+        if (liabilityAccounts.length === 0) {
+            liabilitiesTableBody.innerHTML = `<tr><td colspan="5" style="text-align: center; color: var(--text-secondary); padding: 1.5rem;">No liabilities registered.</td></tr>`;
+        } else {
+            liabilityAccounts.forEach(acc => {
+                const tr = document.createElement('tr');
+                
+                let terms = 'No special terms';
+                if (acc.apr !== undefined && acc.apr !== null) {
+                    terms = `${acc.apr}% APR`;
+                }
+                if (acc.nextPaymentDueDate) {
+                    try {
+                        const dueDate = new Date(acc.nextPaymentDueDate + 'T00:00:00');
+                        const formattedDate = dueDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
+                        terms += ` • Due ${formattedDate}`;
+                    } catch (e) {
+                        terms += ` • Due ${acc.nextPaymentDueDate}`;
+                    }
+                }
+
+                tr.innerHTML = `
+                    <td style="font-weight: 500; padding: 12px;">${acc.name}</td>
+                    <td style="padding: 12px;">${acc.institution}</td>
+                    <td style="padding: 12px;"><span class="tx-type-label" style="background: rgba(244,63,94,0.1); color: var(--accent-rose); border-color: rgba(244,63,94,0.2);">${(acc.subtype || acc.type).toUpperCase()}</span></td>
+                    <td style="color: var(--text-secondary); font-size: 0.85rem; padding: 12px;">${terms}</td>
+                    <td style="text-align: right; font-weight: 600; color: var(--accent-rose); padding: 12px;">${formatCurrency(Math.abs(acc.balance))}</td>
+                `;
+                liabilitiesTableBody.appendChild(tr);
+            });
+        }
+
+        const totalAssetsValue = totalBreakdownCash + totalBreakdownCrypto;
+        const totalLiabilitiesValue = totalBreakdownCredit + totalBreakdownLoans;
+        const netWorthValue = totalAssetsValue - totalLiabilitiesValue;
+
+        // Update Top Card Metrics
+        document.getElementById('breakdown-total-assets').textContent = formatCurrency(totalAssetsValue);
+        document.getElementById('breakdown-cash-subtotal').textContent = formatCurrency(totalBreakdownCash);
+        document.getElementById('breakdown-crypto-subtotal').textContent = formatCurrency(totalBreakdownCrypto);
+
+        document.getElementById('breakdown-total-liabilities').textContent = formatCurrency(totalLiabilitiesValue);
+        document.getElementById('breakdown-credit-subtotal').textContent = formatCurrency(totalBreakdownCredit);
+        document.getElementById('breakdown-loans-subtotal').textContent = formatCurrency(totalBreakdownLoans);
+
+        const netWorthEl = document.getElementById('breakdown-net-worth');
+        netWorthEl.textContent = formatCurrency(netWorthValue);
+        if (netWorthValue >= 0) {
+            netWorthEl.style.color = 'var(--accent-emerald)';
+            document.getElementById('breakdown-net-worth-desc').textContent = 'Positive equity in your financial profile.';
+        } else {
+            netWorthEl.style.color = 'var(--accent-rose)';
+            document.getElementById('breakdown-net-worth-desc').textContent = 'Outstanding liabilities exceed your assets.';
+        }
+
+        // Render Doughnut Charts
+        renderAssetsAllocationChart(totalBreakdownCash, totalBreakdownCrypto);
+        renderLiabilitiesAllocationChart(totalBreakdownCredit, totalBreakdownLoans);
+    }
+
+    function renderAssetsAllocationChart(cash, crypto) {
+        const canvas = document.getElementById('assetsAllocationChart');
+        if (!canvas) return;
+        const ctx = canvas.getContext('2d');
+        const emptyState = document.getElementById('assets-chart-empty');
+
+        if (cash === 0 && crypto === 0) {
+            emptyState.classList.remove('hidden');
+            return;
+        }
+        emptyState.classList.add('hidden');
+
+        if (assetsChartInstance) {
+            assetsChartInstance.destroy();
+        }
+
+        assetsChartInstance = new Chart(ctx, {
+            type: 'doughnut',
+            data: {
+                labels: ['Cash Assets', 'Crypto Assets'],
+                datasets: [{
+                    data: [cash, crypto],
+                    backgroundColor: ['#0ea5e9', '#a855f7'],
+                    borderColor: 'rgba(255,255,255,0.06)',
+                    borderWidth: 2
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        position: 'bottom',
+                        labels: {
+                            color: '#94a3b8',
+                            font: { family: 'Outfit', size: 12 }
+                        }
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                return ` ${context.label}: ${formatCurrency(context.raw)}`;
+                            }
+                        }
+                    }
+                },
+                cutout: '65%'
+            }
+        });
+    }
+
+    function renderLiabilitiesAllocationChart(credit, loans) {
+        const canvas = document.getElementById('liabilitiesAllocationChart');
+        if (!canvas) return;
+        const ctx = canvas.getContext('2d');
+        const emptyState = document.getElementById('liabilities-chart-empty');
+
+        if (credit === 0 && loans === 0) {
+            emptyState.classList.remove('hidden');
+            return;
+        }
+        emptyState.classList.add('hidden');
+
+        if (liabilitiesChartInstance) {
+            liabilitiesChartInstance.destroy();
+        }
+
+        liabilitiesChartInstance = new Chart(ctx, {
+            type: 'doughnut',
+            data: {
+                labels: ['Credit Cards & BNPL', 'Student & Personal Loans'],
+                datasets: [{
+                    data: [credit, loans],
+                    backgroundColor: ['#f43f5e', '#f59e0b'],
+                    borderColor: 'rgba(255,255,255,0.06)',
+                    borderWidth: 2
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        position: 'bottom',
+                        labels: {
+                            color: '#94a3b8',
+                            font: { family: 'Outfit', size: 12 }
+                        }
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                return ` ${context.label}: ${formatCurrency(context.raw)}`;
+                            }
+                        }
+                    }
+                },
+                cutout: '65%'
+            }
+        });
     }
 
     // Initial load
