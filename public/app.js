@@ -242,6 +242,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 const historyRes = await fetch('/api/history');
                 const history = await historyRes.json();
                 updateTrendBadge(netWorth, history);
+                renderNetWorthChart(history);
             } catch (histErr) {
                 console.warn('[History] Failed to load trend:', histErr);
             }
@@ -385,9 +386,11 @@ document.addEventListener('DOMContentLoaded', () => {
     const dashboardView = document.getElementById('dashboard-view');
     const chatView = document.getElementById('chat-view');
     const settingsView = document.getElementById('settings-view');
+    const transactionsView = document.getElementById('transactions-view');
     const navDashboard = document.getElementById('nav-dashboard');
     const navChat = document.getElementById('nav-chat');
     const navSettings = document.getElementById('nav-settings');
+    const navTransactions = document.getElementById('nav-transactions');
     const backToDashboardBtn = document.getElementById('back-to-dashboard-btn');
     const viewTitle = document.getElementById('view-title');
 
@@ -395,6 +398,14 @@ document.addEventListener('DOMContentLoaded', () => {
     const settingsForm = document.getElementById('settings-form');
     const settingsSalary = document.getElementById('settings-salary');
     const settingsPayFrequency = document.getElementById('settings-pay-frequency');
+
+    // Transactions elements
+    const txTableBody = document.getElementById('transactions-table-body');
+    const txSearch = document.getElementById('tx-search');
+    const txTypeFilter = document.getElementById('tx-type-filter');
+    const txEmptyState = document.getElementById('tx-empty-state');
+    const txLoadingShimmer = document.getElementById('tx-loading-shimmer');
+    let allTransactionsCache = [];
 
     // Chat sidebar elements
     const chatCashVal = document.getElementById('chat-cash-val');
@@ -416,8 +427,10 @@ document.addEventListener('DOMContentLoaded', () => {
         dashboardView.classList.remove('hidden');
         chatView.classList.add('hidden');
         settingsView.classList.add('hidden');
+        transactionsView.classList.add('hidden');
         navChat.classList.remove('active');
         navSettings.classList.remove('active');
+        navTransactions.classList.remove('active');
         navDashboard.classList.add('active');
         viewTitle.textContent = 'Overview';
     }
@@ -426,8 +439,10 @@ document.addEventListener('DOMContentLoaded', () => {
         dashboardView.classList.add('hidden');
         chatView.classList.remove('hidden');
         settingsView.classList.add('hidden');
+        transactionsView.classList.add('hidden');
         navDashboard.classList.remove('active');
         navSettings.classList.remove('active');
+        navTransactions.classList.remove('active');
         navChat.classList.add('active');
         viewTitle.textContent = 'AI Financial Advisor';
 
@@ -441,10 +456,25 @@ document.addEventListener('DOMContentLoaded', () => {
         dashboardView.classList.add('hidden');
         chatView.classList.add('hidden');
         settingsView.classList.remove('hidden');
+        transactionsView.classList.add('hidden');
         navDashboard.classList.remove('active');
         navChat.classList.remove('active');
+        navTransactions.classList.remove('active');
         navSettings.classList.add('active');
         viewTitle.textContent = 'Settings & Profile';
+    }
+
+    function showTransactions() {
+        dashboardView.classList.add('hidden');
+        chatView.classList.add('hidden');
+        settingsView.classList.add('hidden');
+        transactionsView.classList.remove('hidden');
+        navDashboard.classList.remove('active');
+        navChat.classList.remove('active');
+        navSettings.classList.remove('active');
+        navTransactions.classList.add('active');
+        viewTitle.textContent = 'Transactions Log';
+        loadTransactionsPage();
     }
 
     // Fetch and populate Profile Settings
@@ -513,6 +543,212 @@ document.addEventListener('DOMContentLoaded', () => {
             pctEl.textContent = '0.0%';
         }
         trendEl.classList.remove('hidden');
+    }
+
+    // Chart.js render helper
+    let netWorthChartInstance = null;
+    function renderNetWorthChart(history) {
+        const ctx = document.getElementById('netWorthChart');
+        const emptyState = document.getElementById('chart-empty-state');
+        if (!ctx) return;
+
+        if (!history || history.length === 0) {
+            ctx.classList.add('hidden');
+            emptyState.classList.remove('hidden');
+            return;
+        }
+
+        ctx.classList.remove('hidden');
+        emptyState.classList.add('hidden');
+
+        if (netWorthChartInstance) {
+            netWorthChartInstance.destroy();
+        }
+
+        const labels = history.map(h => {
+            const date = new Date(h.date + 'T00:00:00');
+            return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
+        });
+
+        const cashData = history.map(h => h.cash);
+        const cryptoData = history.map(h => h.crypto);
+        const netWorthData = history.map(h => h.netWorth);
+
+        netWorthChartInstance = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: [
+                    {
+                        label: 'Net Worth',
+                        data: netWorthData,
+                        borderColor: '#10b981',
+                        borderWidth: 3,
+                        pointBackgroundColor: '#10b981',
+                        pointBorderColor: 'rgba(255,255,255,0.1)',
+                        pointHoverRadius: 6,
+                        tension: 0.35,
+                        fill: false
+                    },
+                    {
+                        label: 'Cash Assets',
+                        data: cashData,
+                        borderColor: '#0ea5e9',
+                        borderWidth: 2,
+                        pointBackgroundColor: '#0ea5e9',
+                        pointHoverRadius: 4,
+                        tension: 0.35,
+                        fill: true,
+                        backgroundColor: 'rgba(14, 165, 233, 0.05)'
+                    },
+                    {
+                        label: 'Crypto Assets',
+                        data: cryptoData,
+                        borderColor: '#a855f7',
+                        borderWidth: 2,
+                        pointBackgroundColor: '#a855f7',
+                        pointHoverRadius: 4,
+                        tension: 0.35,
+                        fill: true,
+                        backgroundColor: 'rgba(168, 85, 247, 0.05)'
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        display: false
+                    },
+                    tooltip: {
+                        mode: 'index',
+                        intersect: false,
+                        backgroundColor: '#111422',
+                        titleColor: '#f8fafc',
+                        bodyColor: '#94a3b8',
+                        borderColor: 'rgba(255,255,255,0.08)',
+                        borderWidth: 1,
+                        padding: 10,
+                        bodyFont: {
+                            family: 'Plus Jakarta Sans'
+                        },
+                        titleFont: {
+                            family: 'Plus Jakarta Sans',
+                            weight: 'bold'
+                        },
+                        callbacks: {
+                            label: function(context) {
+                                let label = context.dataset.label || '';
+                                if (label) {
+                                    label += ': ';
+                                }
+                                if (context.parsed.y !== null) {
+                                    label += new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(context.parsed.y);
+                                }
+                                return label;
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    x: {
+                        grid: {
+                            color: 'rgba(255,255,255,0.02)'
+                        },
+                        ticks: {
+                            color: '#94a3b8',
+                            font: {
+                                family: 'Plus Jakarta Sans',
+                                size: 10
+                            }
+                        }
+                    },
+                    y: {
+                        grid: {
+                            color: 'rgba(255,255,255,0.04)'
+                        },
+                        ticks: {
+                            color: '#94a3b8',
+                            font: {
+                                family: 'Plus Jakarta Sans',
+                                size: 10
+                            },
+                            callback: function(value) {
+                                return '$' + value.toLocaleString();
+                            }
+                        }
+                    }
+                }
+            }
+        });
+    }
+
+    // Transactions Log Functions
+    async function loadTransactionsPage() {
+        txTableBody.innerHTML = '';
+        txEmptyState.classList.add('hidden');
+        txLoadingShimmer.classList.remove('hidden');
+
+        try {
+            const res = await fetch('/api/transactions');
+            const data = await res.json();
+            allTransactionsCache = data.transactions || [];
+            renderTransactionsTable(allTransactionsCache);
+        } catch (err) {
+            console.error('[Transactions] Failed to load transactions:', err);
+            showToast('Failed to load transaction data.', 'error');
+            txEmptyState.classList.remove('hidden');
+        } finally {
+            txLoadingShimmer.classList.add('hidden');
+        }
+    }
+
+    function renderTransactionsTable(transactions) {
+        txTableBody.innerHTML = '';
+        
+        if (!transactions || transactions.length === 0) {
+            txEmptyState.classList.remove('hidden');
+            return;
+        }
+        txEmptyState.classList.add('hidden');
+
+        transactions.forEach(tx => {
+            const tr = document.createElement('tr');
+            const amountClass = tx.type === 'deposit' ? 'deposit' : 'expense';
+            const amountSign = tx.type === 'deposit' ? '+' : '-';
+            const categoryClass = tx.category.toLowerCase().replace(/[^a-z0-9]/g, '-');
+            
+            const formattedDate = new Date(tx.date + 'T00:00:00').toLocaleDateString('en-US', {
+                month: 'short',
+                day: 'numeric',
+                year: 'numeric',
+                timeZone: 'UTC'
+            });
+
+            tr.innerHTML = `
+                <td>${formattedDate}</td>
+                <td style="font-weight: 500;">${tx.name}</td>
+                <td><span class="category-tag ${categoryClass}">${tx.category}</span></td>
+                <td><span class="tx-type-label">${tx.type}</span></td>
+                <td class="tx-amount ${amountClass}">${amountSign}${formatCurrency(tx.amount)}</td>
+            `;
+            txTableBody.appendChild(tr);
+        });
+    }
+
+    function applyTransactionFilters() {
+        const query = txSearch.value.trim().toLowerCase();
+        const type = txTypeFilter.value;
+
+        const filtered = allTransactionsCache.filter(tx => {
+            const matchesSearch = tx.name.toLowerCase().includes(query) || 
+                                  tx.category.toLowerCase().includes(query);
+            const matchesType = type === 'all' || tx.type === type;
+            return matchesSearch && matchesType;
+        });
+
+        renderTransactionsTable(filtered);
     }
 
     // Render message bubbles in chat
@@ -673,6 +909,7 @@ document.addEventListener('DOMContentLoaded', () => {
     navDashboard.addEventListener('click', (e) => { e.preventDefault(); showDashboard(); });
     navChat.addEventListener('click', (e) => { e.preventDefault(); showChat(); });
     navSettings.addEventListener('click', (e) => { e.preventDefault(); showSettings(); });
+    navTransactions.addEventListener('click', (e) => { e.preventDefault(); showTransactions(); });
     backToDashboardBtn.addEventListener('click', showDashboard);
 
     chatForm.addEventListener('submit', (e) => {
@@ -682,6 +919,9 @@ document.addEventListener('DOMContentLoaded', () => {
         chatInput.value = '';
         sendChatMessage(text);
     });
+
+    txSearch.addEventListener('input', applyTransactionFilters);
+    txTypeFilter.addEventListener('change', applyTransactionFilters);
 
     settingsForm.addEventListener('submit', async (e) => {
         e.preventDefault();

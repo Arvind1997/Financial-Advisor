@@ -18,6 +18,8 @@
     
     <!-- Plaid Link Javascript SDK -->
     <script src="https://cdn.plaid.com/link/v2/stable/link-initialize.js"></script>
+    <!-- Chart.js CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body>
     <div class="glass-bg-container">
@@ -132,6 +134,30 @@
                             <button id="kraken-link-btn" class="btn btn-accent">
                                 <i class="fa-solid fa-circle-dollar-to-slot"></i> Link Kraken API
                             </button>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Historical Net Worth Trend Chart -->
+                <section class="chart-section">
+                    <div class="glass-card chart-card">
+                        <div class="chart-header">
+                            <div>
+                                <h3 class="chart-title">Net Worth Progression</h3>
+                                <p class="chart-subtitle">Historical growth trend of cash and crypto assets</p>
+                            </div>
+                            <div class="chart-legend-custom">
+                                <span class="chart-legend-dot cash"></span> Cash
+                                <span class="chart-legend-dot crypto"></span> Crypto
+                                <span class="chart-legend-dot networth"></span> Net Worth
+                            </div>
+                        </div>
+                        <div class="chart-wrapper">
+                            <canvas id="netWorthChart"></canvas>
+                            <div id="chart-empty-state" class="empty-state hidden">
+                                <i class="fa-solid fa-chart-line"></i>
+                                <p>No historical net worth snapshots logged yet. Visit again tomorrow to see your trend form.</p>
+                            </div>
                         </div>
                     </div>
                 </section>
@@ -317,6 +343,58 @@
                                 </button>
                             </div>
                         </form>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Transactions View -->
+            <div id="transactions-view" class="hidden">
+                <div class="transactions-wrapper">
+                    <div class="glass-card transactions-card">
+                        <div class="transactions-header">
+                            <div>
+                                <h2>Transactions Log</h2>
+                                <p class="transactions-subtitle">Monitor and filter recent activities across your linked bank accounts and crypto exchanges.</p>
+                            </div>
+                            <div class="transactions-filters">
+                                <div class="search-input-wrapper">
+                                    <i class="fa-solid fa-magnifying-glass"></i>
+                                    <input type="text" id="tx-search" placeholder="Search description...">
+                                </div>
+                                <select id="tx-type-filter" class="filter-dropdown">
+                                    <option value="all">All Types</option>
+                                    <option value="expense">Expenses</option>
+                                    <option value="deposit">Deposits</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div class="table-container">
+                            <table class="transactions-table">
+                                <thead>
+                                    <tr>
+                                        <th>Date</th>
+                                        <th>Description</th>
+                                        <th>Category</th>
+                                        <th>Type</th>
+                                        <th>Amount</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="transactions-table-body">
+                                    <!-- Populated programmatically -->
+                                </tbody>
+                            </table>
+                            <div id="tx-empty-state" class="empty-state hidden">
+                                <i class="fa-solid fa-arrows-spin"></i>
+                                <p>No transactions found matching your criteria.</p>
+                            </div>
+                            <div id="tx-loading-shimmer" class="tx-shimmer-container">
+                                <div class="shimmer-row"></div>
+                                <div class="shimmer-row"></div>
+                                <div class="shimmer-row"></div>
+                                <div class="shimmer-row"></div>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
