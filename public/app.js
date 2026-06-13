@@ -98,6 +98,7 @@ document.addEventListener('DOMContentLoaded', () => {
             globalAccounts = plaidData.accounts || [];
             populateOverrideDropdown();
             fetchOverrides();
+            fetchPlaidConnections();
 
             // 2. Fetch Kraken Balances
             const krakenRes = await fetch('/api/kraken/balances');
@@ -1212,9 +1213,81 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
+    // Plaid Connections DOM elements
+    const plaidConnectionsListBody = document.getElementById('plaid-connections-list-body');
+    const plaidConnectionsEmptyState = document.getElementById('plaid-connections-empty-state');
+
+    async function fetchPlaidConnections() {
+        try {
+            const res = await fetch('/api/plaid_connections');
+            const connections = await res.json();
+            renderPlaidConnectionsList(connections);
+        } catch (err) {
+            console.error('[Plaid Connections] Load failed:', err);
+        }
+    }
+
+    function renderPlaidConnectionsList(connections) {
+        plaidConnectionsListBody.innerHTML = '';
+        if (!connections || connections.length === 0) {
+            plaidConnectionsEmptyState.classList.remove('hidden');
+            return;
+        }
+        plaidConnectionsEmptyState.classList.add('hidden');
+
+        connections.forEach(conn => {
+            const tr = document.createElement('tr');
+            
+            tr.innerHTML = `
+                <td style="font-weight: 500; padding: 12px;">
+                    <i class="fa-solid fa-building-columns" style="color: var(--accent-cyan); margin-right: 8px;"></i>
+                    ${conn.institutionName}
+                </td>
+                <td style="color: var(--text-secondary); font-size: 0.85rem; padding: 12px;">
+                    ${conn.accountsSummary || 'No accounts found'}
+                </td>
+                <td style="text-align: center; padding: 12px;">
+                    <button class="btn-delete-connection" data-token="${conn.token}" style="background: none; border: none; color: var(--text-secondary); cursor: pointer; transition: color 0.2s;" onmouseover="this.style.color='#f43f5e'" onmouseout="this.style.color='var(--text-secondary)'">
+                        <i class="fa-solid fa-link-slash"></i>
+                    </button>
+                </td>
+            `;
+
+            tr.querySelector('.btn-delete-connection').addEventListener('click', async () => {
+                if (confirm(`Are you sure you want to disconnect this connection to ${conn.institutionName}? This will stop syncing the associated accounts.`)) {
+                    await disconnectPlaidConnection(conn.token);
+                }
+            });
+
+            plaidConnectionsListBody.appendChild(tr);
+        });
+    }
+
+    async function disconnectPlaidConnection(token) {
+        showToast('Disconnecting bank connection...', 'info');
+        try {
+            const res = await fetch('/api/plaid_connections', {
+                method: 'DELETE',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ token })
+            });
+
+            if (res.ok) {
+                showToast('Bank connection disconnected successfully.', 'success');
+                fetchPlaidConnections();
+                fetchDashboardData();
+            } else {
+                showToast('Failed to disconnect bank connection.', 'error');
+            }
+        } catch (err) {
+            showToast('Failed to disconnect bank connection.', 'error');
+        }
+    }
+
     // Initial load
     fetchProfileSettings();
     fetchManualAccounts();
     fetchDashboardData();
+    fetchPlaidConnections();
 });
 

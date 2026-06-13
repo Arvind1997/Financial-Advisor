@@ -146,7 +146,7 @@ app.post('/api/exchange_public_token', async (req, res) => {
 
 // Fetch balances for all linked accounts
 app.get('/api/balances', async (req, res) => {
-  const results = [];
+  const flatAccounts = [];
   const errors = [];
   const overrides = db.getAccountOverrides();
 
@@ -194,11 +194,14 @@ app.get('/api/balances', async (req, res) => {
   for (const token of tokenStore.plaidAccessTokens) {
     if (token.startsWith('access-sandbox-')) {
       // Handle in-app simulated accounts added during sandbox flow
-      results.push({
-        institution: 'Simulated Bank Account',
-        accounts: [
-          { id: 'sim-1', name: 'Simulated Checking', balance: 7500.00, type: 'depository', subtype: 'checking', mask: '9999' }
-        ]
+      flatAccounts.push({
+        id: 'sim-1',
+        name: 'Simulated Checking',
+        balance: 7500.00,
+        type: 'depository',
+        subtype: 'checking',
+        mask: '9999',
+        institution: 'Simulated Bank Account'
       });
       continue;
     }
@@ -233,72 +236,71 @@ app.get('/api/balances', async (req, res) => {
         console.warn('[Plaid] Could not fetch institution info, using default name');
       }
 
-      results.push({
-        institution: institutionName,
-        accounts: accountsData.map(acc => {
-          const isCredit = acc.type === 'credit';
-          const isLoan = acc.type === 'loan';
-          
-          let apr = null;
-          let nextPaymentDueDate = null;
-          let minimumPayment = null;
-          let lastStatementBalance = null;
+      accountsData.forEach(acc => {
+        const isCredit = acc.type === 'credit';
+        const isLoan = acc.type === 'loan';
+        
+        let apr = null;
+        let nextPaymentDueDate = null;
+        let minimumPayment = null;
+        let lastStatementBalance = null;
 
-          if (isLiabilitiesFetch && liabilitiesData) {
-            const accId = acc.account_id;
-            if (isCredit && liabilitiesData.credit) {
-              const card = liabilitiesData.credit.find(c => c.account_id === accId);
-              if (card) {
-                if (card.aprs && card.aprs.length > 0) {
-                  const purchaseApr = card.aprs.find(a => a.apr_type === 'purchase_apr');
-                  apr = purchaseApr ? purchaseApr.apr_percentage : card.aprs[0].apr_percentage;
-                }
-                nextPaymentDueDate = card.next_payment_due_date;
-                minimumPayment = card.minimum_payment_amount;
-                lastStatementBalance = card.last_statement_balance;
+        if (isLiabilitiesFetch && liabilitiesData) {
+          const accId = acc.account_id;
+          if (isCredit && liabilitiesData.credit) {
+            const card = liabilitiesData.credit.find(c => c.account_id === accId);
+            if (card) {
+              if (card.aprs && card.aprs.length > 0) {
+                const purchaseApr = card.aprs.find(a => a.apr_type === 'purchase_apr');
+                apr = purchaseApr ? purchaseApr.apr_percentage : card.aprs[0].apr_percentage;
               }
-            } else if (isLoan && liabilitiesData.student) {
-              const studentLoan = liabilitiesData.student.find(s => s.account_id === accId);
-              if (studentLoan) {
-                apr = studentLoan.interest_rate_percentage;
-                nextPaymentDueDate = studentLoan.next_payment_due_date;
-                minimumPayment = studentLoan.minimum_payment_amount;
+              nextPaymentDueDate = card.next_payment_due_date;
+              minimumPayment = card.minimum_payment_amount;
+              lastStatementBalance = card.last_statement_balance;
+            }
+          } else if (isLoan && liabilitiesData.student) {
+            const studentLoan = liabilitiesData.student.find(s => s.account_id === accId);
+            if (studentLoan) {
+              apr = studentLoan.interest_rate_percentage;
+              nextPaymentDueDate = studentLoan.next_payment_due_date;
+              minimumPayment = studentLoan.minimum_payment_amount;
+            }
+          } else if (isLoan && liabilitiesData.mortgage) {
+            const mortgage = liabilitiesData.mortgage.find(m => m.account_id === accId);
+            if (mortgage) {
+              if (mortgage.interest_rate) {
+                apr = mortgage.interest_rate.percentage;
               }
-            } else if (isLoan && liabilitiesData.mortgage) {
-              const mortgage = liabilitiesData.mortgage.find(m => m.account_id === accId);
-              if (mortgage) {
-                if (mortgage.interest_rate) {
-                  apr = mortgage.interest_rate.percentage;
-                }
-                nextPaymentDueDate = mortgage.next_payment_due_date;
-                minimumPayment = mortgage.minimum_payment_amount;
-              }
+              nextPaymentDueDate = mortgage.next_payment_due_date;
+              minimumPayment = mortgage.minimum_payment_amount;
             }
           }
+        }
 
-          apr = normalizeApr(apr);
+        apr = normalizeApr(apr);
 
-          // Merge manual overrides from database
-          const override = overrides[acc.account_id];
-          if (override) {
-            if (override.apr !== null) apr = override.apr;
-            if (override.nextPaymentDueDate !== null) nextPaymentDueDate = override.nextPaymentDueDate;
-            if (override.minimumPayment !== null) minimumPayment = override.minimumPayment;
-          }
+        // Merge manual overrides from database
+        const override = overrides[acc.account_id];
+        if (override) {
+          if (override.apr !== null) apr = override.apr;
+          if (override.nextPaymentDueDate !== null) nextPaymentDueDate = override.nextPaymentDueDate;
+          if (override.minimumPayment !== null) minimumPayment = override.minimumPayment;
+        }
 
-          return {
-            id: acc.account_id,
-            name: acc.name,
-            balance: acc.balances.current,
-            type: acc.type,
-            subtype: acc.subtype,
-            mask: acc.mask,
-            apr,
-            nextPaymentDueDate,
-            minimumPayment,
-            lastStatementBalance
-          };
-        })
+        flatAccounts.push({
+          id: acc.account_id,
+          name: acc.name,
+          balance: acc.balances.current,
+          type: acc.type,
+          subtype: acc.subtype,
+          mask: acc.mask,
+          institution: institutionName,
+          isManual: false,
+          apr,
+          nextPaymentDueDate,
+          minimumPayment,
+          lastStatementBalance
+        });
       });
     } catch (error) {
       console.error('[Plaid] Error fetching balance:', error.response ? error.response.data : error.message);
@@ -309,40 +311,84 @@ app.get('/api/balances', async (req, res) => {
   // Merge manual accounts
   try {
     const manualAccounts = db.getManualAccounts();
-    if (manualAccounts.length > 0) {
-      results.push({
-        institution: 'Manual Accounts',
-        accounts: manualAccounts.map(acc => {
-          let apr = null;
-          let nextPaymentDueDate = null;
-          let minimumPayment = null;
+    manualAccounts.forEach(acc => {
+      let apr = null;
+      let nextPaymentDueDate = null;
+      let minimumPayment = null;
 
-          const override = overrides[acc.id];
-          if (override) {
-            if (override.apr !== null) apr = override.apr;
-            if (override.nextPaymentDueDate !== null) nextPaymentDueDate = override.nextPaymentDueDate;
-            if (override.minimumPayment !== null) minimumPayment = override.minimumPayment;
-          }
+      const override = overrides[acc.id];
+      if (override) {
+        if (override.apr !== null) apr = override.apr;
+        if (override.nextPaymentDueDate !== null) nextPaymentDueDate = override.nextPaymentDueDate;
+        if (override.minimumPayment !== null) minimumPayment = override.minimumPayment;
+      }
 
-          return {
-            id: acc.id,
-            name: acc.name,
-            balance: acc.balance,
-            type: acc.type,
-            subtype: acc.type === 'credit' ? 'credit card' : (acc.type === 'loan' ? 'loan' : 'manual asset'),
-            mask: 'MANUAL',
-            isManual: true,
-            apr,
-            nextPaymentDueDate,
-            minimumPayment,
-            lastStatementBalance: null
-          };
-        })
+      flatAccounts.push({
+        id: acc.id,
+        name: acc.name,
+        balance: acc.balance,
+        type: acc.type,
+        subtype: acc.type === 'credit' ? 'credit card' : (acc.type === 'loan' ? 'loan' : 'manual asset'),
+        mask: 'MANUAL',
+        isManual: true,
+        institution: acc.institution || 'Manual Entry',
+        apr,
+        nextPaymentDueDate,
+        minimumPayment,
+        lastStatementBalance: null
       });
-    }
+    });
   } catch (err) {
     console.error('[Balances manual merge error]', err.message);
   }
+
+  // Deduplicate flatAccounts
+  const dedupedAccounts = [];
+  const seen = new Map();
+
+  flatAccounts.forEach(acc => {
+    if (acc.isManual) {
+      dedupedAccounts.push(acc);
+      return;
+    }
+
+    const inst = (acc.institution || '').toLowerCase().trim();
+    const mask = (acc.mask || '').trim();
+    const sub = (acc.subtype || acc.type || '').toLowerCase().trim();
+    const key = (inst && mask) ? `${inst}_${mask}_${sub}` : acc.id;
+
+    if (!seen.has(key)) {
+      seen.set(key, acc);
+      dedupedAccounts.push(acc);
+    } else {
+      const existing = seen.get(key);
+      if (existing.apr === null && acc.apr !== null) existing.apr = acc.apr;
+      if (existing.nextPaymentDueDate === null && acc.nextPaymentDueDate !== null) {
+        existing.nextPaymentDueDate = acc.nextPaymentDueDate;
+      }
+      if (existing.minimumPayment === null && acc.minimumPayment !== null) {
+        existing.minimumPayment = acc.minimumPayment;
+      }
+      if (existing.lastStatementBalance === null && acc.lastStatementBalance !== null) {
+        existing.lastStatementBalance = acc.lastStatementBalance;
+      }
+    }
+  });
+
+  // Group deduped accounts by institution
+  const grouped = {};
+  dedupedAccounts.forEach(acc => {
+    const inst = acc.institution || 'Connected Bank Account';
+    if (!grouped[inst]) {
+      grouped[inst] = [];
+    }
+    grouped[inst].push(acc);
+  });
+
+  const results = Object.keys(grouped).map(instName => ({
+    institution: instName,
+    accounts: grouped[instName]
+  }));
 
   res.json({ accounts: results, errors });
 });
@@ -570,17 +616,11 @@ function normalizeApr(apr) {
 
 // Helper to aggregate balances across all connected Plaid bank accounts & Manual accounts
 async function getAggregatedBankBalances() {
-  let totalCash = 0;
-  let totalCreditCardDebt = 0;
-  let totalLoanDebt = 0;
-  const accounts = [];
+  const rawAccounts = [];
 
   if (!isPlaidConfigured || tokenStore.plaidAccessTokens.length === 0) {
     // Simulator defaults
-    totalCash = 30430.82;
-    totalCreditCardDebt = 1254.30;
-    totalLoanDebt = 0;
-    accounts.push(
+    rawAccounts.push(
       { name: 'Total Checking', balance: 5430.82, type: 'depository', subtype: 'checking', institution: 'Chase Bank' },
       { name: 'Sapphire Preferred', balance: -1254.30, type: 'credit', subtype: 'credit card', institution: 'Chase Bank' },
       { name: 'Online Savings', balance: 25000.00, type: 'depository', subtype: 'savings', institution: 'Marcus by Goldman Sachs' }
@@ -588,8 +628,7 @@ async function getAggregatedBankBalances() {
   } else {
     for (const token of tokenStore.plaidAccessTokens) {
       if (token.startsWith('access-sandbox-')) {
-        totalCash += 7500.00;
-        accounts.push({ name: 'Simulated Checking', balance: 7500.00, type: 'depository', subtype: 'checking', institution: 'Simulated Bank Account' });
+        rawAccounts.push({ name: 'Simulated Checking', balance: 7500.00, type: 'depository', subtype: 'checking', institution: 'Simulated Bank Account' });
         continue;
       }
       try {
@@ -672,21 +711,15 @@ async function getAggregatedBankBalances() {
             if (override.minimumPayment !== null) minimumPayment = override.minimumPayment;
           }
 
-          if (isCredit) {
-            totalCreditCardDebt += Math.abs(balance);
-          } else if (isLoan) {
-            totalLoanDebt += Math.abs(balance);
-          } else {
-            totalCash += balance;
-          }
-
-          accounts.push({
+          rawAccounts.push({
             id: acc.account_id,
             name: acc.name,
             balance: balance,
             type: acc.type,
             subtype: acc.subtype,
+            mask: acc.mask,
             institution: institutionName,
+            isManual: false,
             apr: apr,
             nextPaymentDueDate: nextPaymentDueDate,
             minimumPayment: minimumPayment,
@@ -721,14 +754,7 @@ async function getAggregatedBankBalances() {
         if (override.minimumPayment !== null) minimumPayment = override.minimumPayment;
       }
 
-      if (isCredit) {
-        totalCreditCardDebt += Math.abs(balance);
-      } else if (isLoan) {
-        totalLoanDebt += Math.abs(balance);
-      } else {
-        totalCash += balance;
-      }
-      accounts.push({
+      rawAccounts.push({
         id: acc.id,
         name: acc.name,
         balance: balance,
@@ -746,8 +772,60 @@ async function getAggregatedBankBalances() {
     console.error('[Manual Accounts Aggregator Error]', err.message);
   }
 
+  // Deduplicate accounts
+  const dedupedAccounts = [];
+  const seen = new Map();
+
+  rawAccounts.forEach(acc => {
+    if (acc.isManual) {
+      dedupedAccounts.push(acc);
+      return;
+    }
+
+    const inst = (acc.institution || '').toLowerCase().trim();
+    const mask = (acc.mask || '').trim();
+    const sub = (acc.subtype || acc.type || '').toLowerCase().trim();
+    const key = (inst && mask) ? `${inst}_${mask}_${sub}` : acc.id;
+
+    if (!seen.has(key)) {
+      seen.set(key, acc);
+      dedupedAccounts.push(acc);
+    } else {
+      const existing = seen.get(key);
+      if (existing.apr === null && acc.apr !== null) existing.apr = acc.apr;
+      if (existing.nextPaymentDueDate === null && acc.nextPaymentDueDate !== null) {
+        existing.nextPaymentDueDate = acc.nextPaymentDueDate;
+      }
+      if (existing.minimumPayment === null && acc.minimumPayment !== null) {
+        existing.minimumPayment = acc.minimumPayment;
+      }
+      if (existing.lastStatementBalance === null && acc.lastStatementBalance !== null) {
+        existing.lastStatementBalance = acc.lastStatementBalance;
+      }
+    }
+  });
+
+  // Calculate totals from the deduplicated list
+  let totalCash = 0;
+  let totalCreditCardDebt = 0;
+  let totalLoanDebt = 0;
+
+  dedupedAccounts.forEach(acc => {
+    const isCredit = acc.type === 'credit';
+    const isLoan = acc.type === 'loan';
+    const balance = acc.balance;
+
+    if (isCredit) {
+      totalCreditCardDebt += Math.abs(balance);
+    } else if (isLoan) {
+      totalLoanDebt += Math.abs(balance);
+    } else {
+      totalCash += balance;
+    }
+  });
+
   const totalCredit = totalCreditCardDebt + totalLoanDebt;
-  return { totalCash, totalCredit, totalCreditCardDebt, totalLoanDebt, accounts };
+  return { totalCash, totalCredit, totalCreditCardDebt, totalLoanDebt, accounts: dedupedAccounts };
 }
 
 // Helper to pull recent transactions for a Plaid access token
@@ -1255,6 +1333,82 @@ app.delete('/api/account_overrides/:accountId', (req, res) => {
   const { accountId } = req.params;
   const updated = db.deleteAccountOverride(accountId);
   res.json({ success: true, overrides: updated });
+});
+
+// --- PLAID CONNECTIONS ENDPOINTS ---
+
+// Get all Plaid connections
+app.get('/api/plaid_connections', async (req, res) => {
+  const connections = [];
+  if (!isPlaidConfigured || tokenStore.plaidAccessTokens.length === 0) {
+    return res.json([]);
+  }
+
+  for (const token of tokenStore.plaidAccessTokens) {
+    if (token.startsWith('access-sandbox-')) {
+      connections.push({
+        token: token,
+        itemId: 'sandbox-item-id',
+        institutionName: 'Simulated Bank Account',
+        accountsSummary: 'Simulated Checking'
+      });
+      continue;
+    }
+
+    try {
+      const itemResponse = await plaidClient.itemGet({ access_token: token });
+      const instId = itemResponse.data.item.institution_id;
+      const itemId = itemResponse.data.item.item_id;
+
+      let institutionName = 'Connected Bank Account';
+      try {
+        const instResponse = await plaidClient.institutionsGetById({
+          institution_id: instId,
+          country_codes: (process.env.PLAID_COUNTRY_CODES || 'US').split(',')
+        });
+        institutionName = instResponse.data.institution.name;
+      } catch (instErr) {}
+
+      // Fetch accounts under this token to show summary
+      let accountsSummary = '';
+      try {
+        const balanceResponse = await plaidClient.accountsBalanceGet({ access_token: token });
+        const names = balanceResponse.data.accounts.map(a => `${a.name} (•••• ${a.mask})`);
+        accountsSummary = names.join(', ');
+      } catch (balErr) {
+        accountsSummary = 'Accounts details unavailable';
+      }
+
+      connections.push({
+        token: token,
+        itemId: itemId,
+        institutionName: institutionName,
+        accountsSummary: accountsSummary
+      });
+    } catch (err) {
+      console.warn('[Plaid Connections Endpoint] Error reading token:', err.message);
+      connections.push({
+        token: token,
+        itemId: 'invalid_or_expired',
+        institutionName: 'Invalid or Expired Connection',
+        accountsSummary: 'This link is no longer valid and should be disconnected.'
+      });
+    }
+  }
+
+  res.json(connections);
+});
+
+// Delete a Plaid connection (access token)
+app.delete('/api/plaid_connections', (req, res) => {
+  const { token } = req.body;
+  if (!token) {
+    return res.status(400).json({ error: 'Token is required' });
+  }
+
+  const updated = db.removePlaidToken(token);
+  tokenStore.plaidAccessTokens = updated;
+  res.json({ success: true, connectionsCount: updated.length });
 });
 
 // Start the server
