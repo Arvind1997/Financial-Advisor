@@ -281,52 +281,90 @@ app.get('/api/kraken/balances', async (req, res) => {
 });
 
 // Helper to fetch live crypto ticker prices from Kraken and format holdings
-async function getLiveCryptoUSDValues(holdings) {
-  const assets = Object.keys(holdings);
-  
-  if (assets.length === 0) return [];
+function getTickerPair(asset) {
+  if (asset === 'ZUSD' || asset === 'USD') return null;
 
-  // Map kraken naming convention to standard pairs
-  const pairMapping = {
+  const customMapping = {
     'XXBT': 'XXBTZUSD',
     'XETH': 'XETHZUSD',
     'USDT': 'USDTZUSD',
-    'BTC': 'XXBTZUSD',
-    'ETH': 'XETHZUSD'
+    'XXDG': 'XDGUSD',
+    'XXRP': 'XRPUSD',
+    'ZEUR': 'EURUSD'
   };
 
-  const pairsToQuery = assets
-    .map(a => pairMapping[a] || `${a}USD`)
-    .join(',');
+  if (customMapping[asset]) {
+    return customMapping[asset];
+  }
+
+  let cleanAsset = asset;
+  if (asset.startsWith('X') && asset.length === 4) {
+    cleanAsset = asset.substring(1);
+  } else if (asset.startsWith('Z') && asset.length === 4) {
+    cleanAsset = asset.substring(1);
+  }
+  return `${cleanAsset}USD`;
+}
+
+function getDisplaySymbol(asset) {
+  const displayMapping = {
+    'XXBT': 'BTC',
+    'XETH': 'ETH',
+    'XXDG': 'DOGE',
+    'XXRP': 'XRP',
+    'ZUSD': 'USD',
+    'ZEUR': 'EUR',
+    'USDT': 'USDT'
+  };
+  if (displayMapping[asset]) return displayMapping[asset];
+  
+  let clean = asset;
+  if (asset.startsWith('X') && asset.length === 4) {
+    clean = asset.substring(1);
+  } else if (asset.startsWith('Z') && asset.length === 4) {
+    clean = asset.substring(1);
+  }
+  return clean === 'XBT' ? 'BTC' : clean;
+}
+
+async function getLiveCryptoUSDValues(holdings) {
+  const assets = Object.keys(holdings);
+  if (assets.length === 0) return [];
+
+  const queryPairs = assets
+    .map(getTickerPair)
+    .filter(p => p !== null);
 
   let prices = {};
-  try {
-    const response = await fetch(`https://api.kraken.com/0/public/Ticker?pair=${pairsToQuery}`);
-    const data = await response.json();
-    if (data.result) {
-      prices = data.result;
+  if (queryPairs.length > 0) {
+    const pairsToQuery = queryPairs.join(',');
+    try {
+      const response = await fetch(`https://api.kraken.com/0/public/Ticker?pair=${pairsToQuery}`);
+      const data = await response.json();
+      if (data.result) {
+        prices = data.result;
+      }
+    } catch (e) {
+      console.warn('[Kraken Prices] Failed to fetch live prices, using fallbacks', e);
     }
-  } catch (e) {
-    console.warn('[Kraken Prices] Failed to fetch live prices, using fallbacks', e);
   }
 
   return assets.map(asset => {
-    const cleanAsset = asset.replace(/^X/, ''); // XXBT -> XBT/BTC, XETH -> ETH
-    let displayAsset = cleanAsset === 'XBT' ? 'BTC' : cleanAsset;
-
-    const queryPair = pairMapping[asset] || `${asset}USD`;
-    // Kraken ticker result has key of the matching pair returned (sometimes different due to legacy names)
-    const tickerKey = Object.keys(prices).find(k => k.toUpperCase() === queryPair.toUpperCase() || k.endsWith(queryPair));
+    const displayAsset = getDisplaySymbol(asset);
+    const queryPair = getTickerPair(asset);
     
-    // Default fallback prices if API fails
     let price = 1.0;
-    if (displayAsset === 'BTC' || displayAsset === 'XBT') price = 67250.00;
+    if (displayAsset === 'BTC') price = 67250.00;
     else if (displayAsset === 'ETH') price = 3480.00;
-    else if (displayAsset === 'USDT') price = 1.0;
-
-    if (tickerKey && prices[tickerKey]) {
-      // 'c' contains the last closed trade [price, lot volume]
-      price = parseFloat(prices[tickerKey].c[0]);
+    
+    if (queryPair) {
+      const tickerKey = Object.keys(prices).find(k => 
+        k.toUpperCase() === queryPair.toUpperCase() || 
+        k.endsWith(queryPair)
+      );
+      if (tickerKey && prices[tickerKey]) {
+        price = parseFloat(prices[tickerKey].c[0]);
+      }
     }
 
     const amount = holdings[asset];
