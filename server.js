@@ -734,10 +734,14 @@ To enable full generative advisory responses, please configure your **GEMINI_API
       systemInstruction: systemInstruction
     });
 
-    const history = messages.slice(0, -1).map(m => ({
-      role: m.role === 'assistant' ? 'model' : 'user',
-      parts: [{ text: m.content }]
-    }));
+    const firstUserIndex = messages.findIndex(m => m.role === 'user');
+    let history = [];
+    if (firstUserIndex !== -1) {
+      history = messages.slice(firstUserIndex, -1).map(m => ({
+        role: m.role === 'assistant' ? 'model' : 'user',
+        parts: [{ text: m.content }]
+      }));
+    }
 
     const lastMessage = messages[messages.length - 1].content;
 
