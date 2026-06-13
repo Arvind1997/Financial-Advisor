@@ -497,8 +497,8 @@ async function getAggregatedBankBalances() {
 
         response.data.accounts.forEach(acc => {
           const balance = acc.balances.current;
-          const isCredit = acc.type === 'credit';
-          if (isCredit) {
+          const isLiability = acc.type === 'credit' || acc.type === 'loan';
+          if (isLiability) {
             totalCredit += Math.abs(balance);
           } else {
             totalCash += balance;
@@ -521,9 +521,9 @@ async function getAggregatedBankBalances() {
   try {
     const manualAccounts = db.getManualAccounts();
     manualAccounts.forEach(acc => {
-      const isCredit = acc.type === 'credit';
+      const isLiability = acc.type === 'credit' || acc.type === 'loan';
       const balance = acc.balance;
-      if (isCredit) {
+      if (isLiability) {
         totalCredit += Math.abs(balance);
       } else {
         totalCash += balance;
@@ -533,7 +533,7 @@ async function getAggregatedBankBalances() {
         name: acc.name,
         balance: balance,
         type: acc.type,
-        subtype: isCredit ? 'credit card' : 'manual asset',
+        subtype: isLiability ? (acc.type === 'loan' ? 'loan' : 'credit card') : 'manual asset',
         institution: acc.institution || 'Manual Entry',
         isManual: true
       });
@@ -729,7 +729,7 @@ app.get('/api/advisor/tips', async (req, res) => {
   - Net Worth: ${formatCurrency(netWorth)}
   - Total Cash Assets: ${formatCurrency(totalCash)}
   - Total Crypto Assets: ${formatCurrency(totalCrypto)}
-  - Total Credit Liabilities: ${formatCurrency(totalCredit)}
+  - Total Liabilities (Credit Cards & Loans): ${formatCurrency(totalCredit)}
   - Stored Accounts: ${JSON.stringify(accountsList)}
   - Crypto Holdings Details: ${JSON.stringify(holdings)}
   - Recent Transactions: ${JSON.stringify(allTransactions.slice(0, 8))}
@@ -872,7 +872,7 @@ app.post('/api/advisor/chat', async (req, res) => {
   - Net Worth: ${formatCurrency(netWorth)}
   - Total Cash Assets: ${formatCurrency(bankRes.totalCash)}
   - Total Crypto Assets: ${formatCurrency(totalCrypto)} (Holdings: ${JSON.stringify(holdings)})
-  - Total Credit Debt (Liabilities): ${formatCurrency(bankRes.totalCredit)}
+  - Total Debt/Liabilities (Credit Cards & Loans): ${formatCurrency(bankRes.totalCredit)}
   - Connected Accounts: ${JSON.stringify(bankRes.accounts)}
   - Historical Net Worth Trend (Daily Snapshots): ${JSON.stringify(history)}
 
@@ -889,7 +889,7 @@ app.post('/api/advisor/chat', async (req, res) => {
 To enable full generative advisory responses, please configure your **GROQ_API_KEY** or **GEMINI_API_KEY** in your local \`.env\` file.
       
 *Your message was:* "${lastUserMsg}"
-*Current Net Worth Context:* **${formatCurrency(netWorth)}** (${formatCurrency(bankRes.totalCash)} Cash, ${formatCurrency(totalCrypto)} Crypto, ${formatCurrency(bankRes.totalCredit)} Credit Card Debt).`
+*Current Net Worth Context:* **${formatCurrency(netWorth)}** (${formatCurrency(bankRes.totalCash)} Cash, ${formatCurrency(totalCrypto)} Crypto, ${formatCurrency(bankRes.totalCredit)} Total Debt/Liabilities).`
     });
   }
 

@@ -114,10 +114,10 @@ document.addEventListener('DOMContentLoaded', () => {
                     let accountsHtml = '';
                     group.accounts.forEach(acc => {
                         bankAccountCount++;
-                        const isCredit = acc.type === 'credit';
+                        const isLiability = acc.type === 'credit' || acc.type === 'loan';
                         const balance = acc.balance;
                         
-                        if (isCredit) {
+                        if (isLiability) {
                             totalCredit += Math.abs(balance);
                         } else {
                             totalCash += balance;
@@ -130,7 +130,7 @@ document.addEventListener('DOMContentLoaded', () => {
                                     <span class="acc-meta">${acc.subtype.toUpperCase()} •••• ${acc.mask}</span>
                                 </div>
                                 <div class="acc-balance-container">
-                                    <span class="acc-val ${isCredit ? 'credit-neg' : ''}">
+                                    <span class="acc-val ${isLiability ? 'credit-neg' : ''}">
                                         ${formatCurrency(balance)}
                                     </span>
                                 </div>
@@ -526,8 +526,9 @@ document.addEventListener('DOMContentLoaded', () => {
         accounts.forEach(acc => {
             const tr = document.createElement('tr');
             const displayBalance = formatCurrency(acc.balance);
-            const balanceClass = acc.balance < 0 ? 'credit-neg' : '';
-            const typeBadge = acc.type === 'credit' ? 'Liability (Credit)' : 'Asset';
+            const isLiability = acc.type === 'credit' || acc.type === 'loan';
+            const balanceClass = (isLiability || acc.balance < 0) ? 'credit-neg' : '';
+            const typeBadge = isLiability ? 'Liability' : 'Asset';
 
             tr.innerHTML = `
                 <td style="font-weight: 500;">${acc.name}</td>
