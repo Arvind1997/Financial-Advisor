@@ -191,19 +191,25 @@ app.get('/api/balances', async (req, res) => {
     return res.json({ accounts: mockAccounts, simulated: tokenStore.plaidAccessTokens.length === 0 });
   }
 
-  for (const token of tokenStore.plaidAccessTokens) {
+  const fetchPromises = tokenStore.plaidAccessTokens.map(async (token) => {
     if (token.startsWith('access-sandbox-')) {
-      // Handle in-app simulated accounts added during sandbox flow
-      flatAccounts.push({
-        id: 'sim-1',
-        name: 'Simulated Checking',
-        balance: 7500.00,
-        type: 'depository',
-        subtype: 'checking',
-        mask: '9999',
-        institution: 'Simulated Bank Account'
-      });
-      continue;
+      return {
+        success: true,
+        accounts: [{
+          id: 'sim-1',
+          name: 'Simulated Checking',
+          balance: 7500.00,
+          type: 'depository',
+          subtype: 'checking',
+          mask: '9999',
+          institution: 'Simulated Bank Account',
+          isManual: false,
+          apr: null,
+          nextPaymentDueDate: null,
+          minimumPayment: null,
+          lastStatementBalance: null
+        }]
+      };
     }
 
     try {
@@ -217,6 +223,10 @@ app.get('/api/balances', async (req, res) => {
         liabilitiesData = response.data.liabilities;
         isLiabilitiesFetch = true;
       } catch (liabErr) {
+        const errData = liabErr.response?.data;
+        if (errData && (errData.error_type === 'ITEM_ERROR' || errData.error_code === 'INVALID_ACCESS_TOKEN')) {
+          throw liabErr;
+        }
         console.warn('[Plaid Balance Endpoint] Liabilities API not available or failed. Falling back to balance get:', liabErr.message);
         const response = await plaidClient.accountsBalanceGet({ access_token: token });
         accountsData = response.data.accounts;
@@ -236,6 +246,7 @@ app.get('/api/balances', async (req, res) => {
         console.warn('[Plaid] Could not fetch institution info, using default name');
       }
 
+      const tokenAccounts = [];
       accountsData.forEach(acc => {
         const isCredit = acc.type === 'credit';
         const isLoan = acc.type === 'loan';
@@ -287,7 +298,7 @@ app.get('/api/balances', async (req, res) => {
           if (override.minimumPayment !== null) minimumPayment = override.minimumPayment;
         }
 
-        flatAccounts.push({
+        tokenAccounts.push({
           id: acc.account_id,
           name: acc.name,
           balance: acc.balances.current,
@@ -302,11 +313,22 @@ app.get('/api/balances', async (req, res) => {
           lastStatementBalance
         });
       });
+
+      return { success: true, accounts: tokenAccounts };
     } catch (error) {
       console.error('[Plaid] Error fetching balance:', error.response ? error.response.data : error.message);
-      errors.push(error.message);
+      return { success: false, error: error.message };
     }
-  }
+  });
+
+  const fetched = await Promise.all(fetchPromises);
+  fetched.forEach(res => {
+    if (res.success) {
+      flatAccounts.push(...res.accounts);
+    } else {
+      errors.push(res.error);
+    }
+  });
 
   // Merge manual accounts
   try {
@@ -626,10 +648,9 @@ async function getAggregatedBankBalances() {
       { name: 'Online Savings', balance: 25000.00, type: 'depository', subtype: 'savings', institution: 'Marcus by Goldman Sachs' }
     );
   } else {
-    for (const token of tokenStore.plaidAccessTokens) {
+    const fetchPromises = tokenStore.plaidAccessTokens.map(async (token) => {
       if (token.startsWith('access-sandbox-')) {
-        rawAccounts.push({ name: 'Simulated Checking', balance: 7500.00, type: 'depository', subtype: 'checking', institution: 'Simulated Bank Account' });
-        continue;
+        return [{ name: 'Simulated Checking', balance: 7500.00, type: 'depository', subtype: 'checking', institution: 'Simulated Bank Account' }];
       }
       try {
         let accountsData = [];
@@ -642,6 +663,10 @@ async function getAggregatedBankBalances() {
           liabilitiesData = response.data.liabilities;
           isLiabilitiesFetch = true;
         } catch (liabErr) {
+          const errData = liabErr.response?.data;
+          if (errData && (errData.error_type === 'ITEM_ERROR' || errData.error_code === 'INVALID_ACCESS_TOKEN')) {
+            throw liabErr;
+          }
           console.warn('[Plaid Balance Aggregator] Liabilities API not available or failed. Falling back to balance get:', liabErr.message);
           const response = await plaidClient.accountsBalanceGet({ access_token: token });
           accountsData = response.data.accounts;
@@ -659,6 +684,7 @@ async function getAggregatedBankBalances() {
         } catch (instErr) {}
 
         const overrides = db.getAccountOverrides();
+        const tokenAccounts = [];
         accountsData.forEach(acc => {
           const balance = acc.balances.current;
           const isCredit = acc.type === 'credit';
@@ -711,7 +737,7 @@ async function getAggregatedBankBalances() {
             if (override.minimumPayment !== null) minimumPayment = override.minimumPayment;
           }
 
-          rawAccounts.push({
+          tokenAccounts.push({
             id: acc.account_id,
             name: acc.name,
             balance: balance,
@@ -726,10 +752,18 @@ async function getAggregatedBankBalances() {
             lastStatementBalance: lastStatementBalance
           });
         });
+
+        return tokenAccounts;
       } catch (e) {
         console.warn('[Plaid Balance Aggregator Error]', e.message);
+        return [];
       }
-    }
+    });
+
+    const results = await Promise.all(fetchPromises);
+    results.forEach(accounts => {
+      rawAccounts.push(...accounts);
+    });
   }
 
   // Merge manual accounts
@@ -877,10 +911,11 @@ app.get('/api/transactions', async (req, res) => {
     return res.json({ transactions: allTransactions, simulated: true });
   }
 
-  for (const token of tokenStore.plaidAccessTokens) {
-    const txs = await fetchRecentTransactions(token);
+  const fetchPromises = tokenStore.plaidAccessTokens.map(token => fetchRecentTransactions(token));
+  const results = await Promise.all(fetchPromises);
+  results.forEach(txs => {
     allTransactions.push(...txs);
-  }
+  });
   
   allTransactions.sort((a, b) => new Date(b.date) - new Date(a.date));
   res.json({ transactions: allTransactions.slice(0, 10), simulated: false });
@@ -951,10 +986,11 @@ app.get('/api/advisor/tips', async (req, res) => {
       { date: '2026-06-01', name: 'Employer Payroll Deposit', amount: 4500.00, category: 'Income', type: 'deposit' }
     ];
   } else {
-    for (const token of tokenStore.plaidAccessTokens) {
-      const txs = await fetchRecentTransactions(token);
+    const fetchPromises = tokenStore.plaidAccessTokens.map(token => fetchRecentTransactions(token));
+    const results = await Promise.all(fetchPromises);
+    results.forEach(txs => {
       allTransactions.push(...txs);
-    }
+    });
   }
 
   const netWorth = (totalCash + totalCrypto) - totalCredit;
@@ -1339,20 +1375,18 @@ app.delete('/api/account_overrides/:accountId', (req, res) => {
 
 // Get all Plaid connections
 app.get('/api/plaid_connections', async (req, res) => {
-  const connections = [];
   if (!isPlaidConfigured || tokenStore.plaidAccessTokens.length === 0) {
     return res.json([]);
   }
 
-  for (const token of tokenStore.plaidAccessTokens) {
+  const fetchPromises = tokenStore.plaidAccessTokens.map(async (token) => {
     if (token.startsWith('access-sandbox-')) {
-      connections.push({
+      return {
         token: token,
         itemId: 'sandbox-item-id',
         institutionName: 'Simulated Bank Account',
         accountsSummary: 'Simulated Checking'
-      });
-      continue;
+      };
     }
 
     try {
@@ -1379,22 +1413,24 @@ app.get('/api/plaid_connections', async (req, res) => {
         accountsSummary = 'Accounts details unavailable';
       }
 
-      connections.push({
+      return {
         token: token,
         itemId: itemId,
         institutionName: institutionName,
         accountsSummary: accountsSummary
-      });
+      };
     } catch (err) {
       console.warn('[Plaid Connections Endpoint] Error reading token:', err.message);
-      connections.push({
+      return {
         token: token,
         itemId: 'invalid_or_expired',
         institutionName: 'Invalid or Expired Connection',
         accountsSummary: 'This link is no longer valid and should be disconnected.'
-      });
+      };
     }
-  }
+  });
+
+  const connections = await Promise.all(fetchPromises);
 
   res.json(connections);
 });
