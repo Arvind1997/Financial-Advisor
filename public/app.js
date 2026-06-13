@@ -41,6 +41,7 @@ document.addEventListener('DOMContentLoaded', () => {
     let totalCash = 0;
     let totalCrypto = 0;
     let totalCredit = 0;
+    let globalAccounts = [];
 
     // Toast Helper
     function showToast(message, type = 'info') {
@@ -94,6 +95,9 @@ document.addEventListener('DOMContentLoaded', () => {
             const plaidRes = await fetch('/api/balances');
             const plaidData = await plaidRes.json();
             plaidSimulated = plaidData.simulated;
+            globalAccounts = plaidData.accounts || [];
+            populateOverrideDropdown();
+            fetchOverrides();
 
             // 2. Fetch Kraken Balances
             const krakenRes = await fetch('/api/kraken/balances');
@@ -1058,6 +1062,153 @@ document.addEventListener('DOMContentLoaded', () => {
             fetchDashboardData();
         } catch (err) {
             showToast('Failed to add manual account.', 'error');
+        }
+    });
+
+    // Overrides DOM elements
+    const overrideForm = document.getElementById('override-form');
+    const overrideAccountSelect = document.getElementById('override-account-select');
+    const overrideApr = document.getElementById('override-apr');
+    const overrideDueDate = document.getElementById('override-due-date');
+    const overridesListBody = document.getElementById('overrides-list-body');
+    const overridesEmptyState = document.getElementById('overrides-empty-state');
+
+    // Overrides management helpers
+    async function fetchOverrides() {
+        try {
+            const res = await fetch('/api/account_overrides');
+            const overrides = await res.json();
+            renderOverridesList(overrides);
+        } catch (err) {
+            console.error('[Overrides] Load failed:', err);
+        }
+    }
+
+    function populateOverrideDropdown() {
+        const selectedVal = overrideAccountSelect.value;
+        overrideAccountSelect.innerHTML = '<option value="" disabled selected>Select an account...</option>';
+        
+        if (!globalAccounts || globalAccounts.length === 0) {
+            return;
+        }
+
+        globalAccounts.forEach(group => {
+            group.accounts.forEach(acc => {
+                const isLiability = acc.type === 'credit' || acc.type === 'loan';
+                if (isLiability) {
+                    const opt = document.createElement('option');
+                    opt.value = acc.id;
+                    opt.textContent = `${group.institution} - ${acc.name} (•••• ${acc.mask || 'MANUAL'})`;
+                    overrideAccountSelect.appendChild(opt);
+                }
+            });
+        });
+
+        if (selectedVal) {
+            overrideAccountSelect.value = selectedVal;
+        }
+    }
+
+    function renderOverridesList(overrides) {
+        overridesListBody.innerHTML = '';
+        const keys = Object.keys(overrides);
+        if (keys.length === 0) {
+            overridesEmptyState.classList.remove('hidden');
+            return;
+        }
+        overridesEmptyState.classList.add('hidden');
+
+        keys.forEach(accId => {
+            const override = overrides[accId];
+            
+            let accName = accId;
+            let found = false;
+            globalAccounts.forEach(group => {
+                const match = group.accounts.find(a => a.id === accId);
+                if (match) {
+                    accName = `${group.institution} - ${match.name}`;
+                    found = true;
+                }
+            });
+
+            if (!found) {
+                accName = `Account ID: ${accId.substring(0, 15)}...`;
+            }
+
+            const tr = document.createElement('tr');
+            const formattedDate = override.nextPaymentDueDate 
+                ? new Date(override.nextPaymentDueDate + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' })
+                : 'Not Set';
+
+            tr.innerHTML = `
+                <td style="font-weight: 500;">${accName}</td>
+                <td><span class="tx-type-label" style="background: rgba(6,182,212,0.1); color: var(--accent-cyan); border-color: rgba(6,182,212,0.2);">${override.apr}%</span></td>
+                <td>${formattedDate}</td>
+                <td>
+                    <button class="btn-delete-override" data-id="${accId}">
+                        <i class="fa-solid fa-trash-can"></i>
+                    </button>
+                </td>
+            `;
+
+            tr.querySelector('.btn-delete-override').addEventListener('click', async () => {
+                if (confirm(`Remove override for this account?`)) {
+                    await deleteOverride(accId);
+                }
+            });
+
+            overridesListBody.appendChild(tr);
+        });
+    }
+
+    async function deleteOverride(accountId) {
+        showToast('Deleting override...', 'info');
+        try {
+            const res = await fetch(`/api/account_overrides/${accountId}`, { method: 'DELETE' });
+            if (res.ok) {
+                showToast('Override deleted successfully.', 'success');
+                fetchOverrides();
+                fetchDashboardData();
+            } else {
+                showToast('Failed to delete override.', 'error');
+            }
+        } catch (err) {
+            showToast('Failed to delete override.', 'error');
+        }
+    }
+
+    overrideForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const accountId = overrideAccountSelect.value;
+        const apr = parseFloat(overrideApr.value);
+        const nextPaymentDueDate = overrideDueDate.value || null;
+
+        if (!accountId) {
+            showToast('Please select an account first.', 'error');
+            return;
+        }
+
+        showToast('Saving override...', 'info');
+
+        try {
+            const res = await fetch('/api/account_overrides', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ accountId, apr, nextPaymentDueDate })
+            });
+
+            if (res.ok) {
+                showToast('Override saved successfully!', 'success');
+                overrideApr.value = '';
+                overrideDueDate.value = '';
+                overrideAccountSelect.selectedIndex = 0;
+                fetchOverrides();
+                fetchDashboardData();
+            } else {
+                showToast('Failed to save override.', 'error');
+            }
+        } catch (err) {
+            showToast('Failed to save override.', 'error');
         }
     });
 

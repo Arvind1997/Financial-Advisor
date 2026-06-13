@@ -148,6 +148,7 @@ app.post('/api/exchange_public_token', async (req, res) => {
 app.get('/api/balances', async (req, res) => {
   const results = [];
   const errors = [];
+  const overrides = db.getAccountOverrides();
 
   // Simulated accounts when in Simulator Mode or no accounts connected yet
   if (!isPlaidConfigured || tokenStore.plaidAccessTokens.length === 0) {
@@ -275,6 +276,16 @@ app.get('/api/balances', async (req, res) => {
             }
           }
 
+          apr = normalizeApr(apr);
+
+          // Merge manual overrides from database
+          const override = overrides[acc.account_id];
+          if (override) {
+            if (override.apr !== null) apr = override.apr;
+            if (override.nextPaymentDueDate !== null) nextPaymentDueDate = override.nextPaymentDueDate;
+            if (override.minimumPayment !== null) minimumPayment = override.minimumPayment;
+          }
+
           return {
             id: acc.account_id,
             name: acc.name,
@@ -301,15 +312,32 @@ app.get('/api/balances', async (req, res) => {
     if (manualAccounts.length > 0) {
       results.push({
         institution: 'Manual Accounts',
-        accounts: manualAccounts.map(acc => ({
-          id: acc.id,
-          name: acc.name,
-          balance: acc.balance,
-          type: acc.type,
-          subtype: acc.type === 'credit' ? 'credit card' : (acc.type === 'loan' ? 'loan' : 'manual asset'),
-          mask: 'MANUAL',
-          isManual: true
-        }))
+        accounts: manualAccounts.map(acc => {
+          let apr = null;
+          let nextPaymentDueDate = null;
+          let minimumPayment = null;
+
+          const override = overrides[acc.id];
+          if (override) {
+            if (override.apr !== null) apr = override.apr;
+            if (override.nextPaymentDueDate !== null) nextPaymentDueDate = override.nextPaymentDueDate;
+            if (override.minimumPayment !== null) minimumPayment = override.minimumPayment;
+          }
+
+          return {
+            id: acc.id,
+            name: acc.name,
+            balance: acc.balance,
+            type: acc.type,
+            subtype: acc.type === 'credit' ? 'credit card' : (acc.type === 'loan' ? 'loan' : 'manual asset'),
+            mask: 'MANUAL',
+            isManual: true,
+            apr,
+            nextPaymentDueDate,
+            minimumPayment,
+            lastStatementBalance: null
+          };
+        })
       });
     }
   } catch (err) {
@@ -528,6 +556,18 @@ const formatCurrency = (val) => {
   }).format(val);
 };
 
+// Normalize decimal interest rates (e.g. 0.06135 -> 6.135)
+function normalizeApr(apr) {
+  if (apr !== null && apr !== undefined) {
+    const num = Number(apr);
+    if (num > 0 && num < 1) {
+      return parseFloat((num * 100).toFixed(4));
+    }
+    return num;
+  }
+  return apr;
+}
+
 // Helper to aggregate balances across all connected Plaid bank accounts & Manual accounts
 async function getAggregatedBankBalances() {
   let totalCash = 0;
@@ -579,6 +619,7 @@ async function getAggregatedBankBalances() {
           institutionName = instResponse.data.institution.name;
         } catch (instErr) {}
 
+        const overrides = db.getAccountOverrides();
         accountsData.forEach(acc => {
           const balance = acc.balances.current;
           const isCredit = acc.type === 'credit';
@@ -621,6 +662,16 @@ async function getAggregatedBankBalances() {
             }
           }
 
+          apr = normalizeApr(apr);
+
+          // Merge manual overrides from database
+          const override = overrides[acc.account_id];
+          if (override) {
+            if (override.apr !== null) apr = override.apr;
+            if (override.nextPaymentDueDate !== null) nextPaymentDueDate = override.nextPaymentDueDate;
+            if (override.minimumPayment !== null) minimumPayment = override.minimumPayment;
+          }
+
           if (isCredit) {
             totalCreditCardDebt += Math.abs(balance);
           } else if (isLoan) {
@@ -630,6 +681,7 @@ async function getAggregatedBankBalances() {
           }
 
           accounts.push({
+            id: acc.account_id,
             name: acc.name,
             balance: balance,
             type: acc.type,
@@ -650,10 +702,25 @@ async function getAggregatedBankBalances() {
   // Merge manual accounts
   try {
     const manualAccounts = db.getManualAccounts();
+    const overrides = db.getAccountOverrides();
     manualAccounts.forEach(acc => {
       const isCredit = acc.type === 'credit';
       const isLoan = acc.type === 'loan';
       const balance = acc.balance;
+      
+      let apr = null;
+      let nextPaymentDueDate = null;
+      let minimumPayment = null;
+      let lastStatementBalance = null;
+
+      // Merge manual overrides from database
+      const override = overrides[acc.id];
+      if (override) {
+        if (override.apr !== null) apr = override.apr;
+        if (override.nextPaymentDueDate !== null) nextPaymentDueDate = override.nextPaymentDueDate;
+        if (override.minimumPayment !== null) minimumPayment = override.minimumPayment;
+      }
+
       if (isCredit) {
         totalCreditCardDebt += Math.abs(balance);
       } else if (isLoan) {
@@ -669,10 +736,10 @@ async function getAggregatedBankBalances() {
         subtype: isCredit ? 'credit card' : (isLoan ? 'loan' : 'manual asset'),
         institution: acc.institution || 'Manual Entry',
         isManual: true,
-        apr: null,
-        nextPaymentDueDate: null,
-        minimumPayment: null,
-        lastStatementBalance: null
+        apr: apr,
+        nextPaymentDueDate: nextPaymentDueDate,
+        minimumPayment: minimumPayment,
+        lastStatementBalance: lastStatementBalance
       });
     });
   } catch (err) {
@@ -1164,6 +1231,30 @@ app.delete('/api/manual_accounts/:id', (req, res) => {
   const { id } = req.params;
   const updated = db.deleteManualAccount(id);
   res.json({ success: true, accounts: updated });
+});
+
+// --- ACCOUNT OVERRIDES ENDPOINTS ---
+
+// Get all account overrides
+app.get('/api/account_overrides', (req, res) => {
+  res.json(db.getAccountOverrides());
+});
+
+// Update or add an override
+app.post('/api/account_overrides', (req, res) => {
+  const { accountId, apr, nextPaymentDueDate, minimumPayment } = req.body;
+  if (!accountId) {
+    return res.status(400).json({ error: 'Account ID is required' });
+  }
+  const updated = db.updateAccountOverride(accountId, { apr, nextPaymentDueDate, minimumPayment });
+  res.json(updated);
+});
+
+// Delete an override
+app.delete('/api/account_overrides/:accountId', (req, res) => {
+  const { accountId } = req.params;
+  const updated = db.deleteAccountOverride(accountId);
+  res.json({ success: true, overrides: updated });
 });
 
 // Start the server

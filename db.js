@@ -12,7 +12,8 @@ const DEFAULT_SCHEMA = {
   plaidAccessTokens: [],
   krakenCredentials: null,
   history: [],
-  manualAccounts: []
+  manualAccounts: [],
+  accountOverrides: {}
 };
 
 // Helper to safely read database
@@ -162,6 +163,34 @@ module.exports = {
       writeDb(db);
     }
     return db.manualAccounts || [];
+  },
+
+  getAccountOverrides() {
+    const db = readDb();
+    return db.accountOverrides || {};
+  },
+
+  updateAccountOverride(accountId, overrideData) {
+    const db = readDb();
+    if (!db.accountOverrides) {
+      db.accountOverrides = {};
+    }
+    db.accountOverrides[accountId] = {
+      apr: (overrideData.apr !== undefined && overrideData.apr !== null && overrideData.apr !== '') ? Number(overrideData.apr) : null,
+      nextPaymentDueDate: overrideData.nextPaymentDueDate || null,
+      minimumPayment: (overrideData.minimumPayment !== undefined && overrideData.minimumPayment !== null && overrideData.minimumPayment !== '') ? Number(overrideData.minimumPayment) : null
+    };
+    writeDb(db);
+    return db.accountOverrides[accountId];
+  },
+
+  deleteAccountOverride(accountId) {
+    const db = readDb();
+    if (db.accountOverrides && db.accountOverrides[accountId]) {
+      delete db.accountOverrides[accountId];
+      writeDb(db);
+    }
+    return db.accountOverrides || {};
   },
 
   clearAll() {
