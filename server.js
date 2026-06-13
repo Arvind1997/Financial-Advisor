@@ -93,13 +93,23 @@ app.post('/api/create_link_token', async (req, res) => {
   }
 
   try {
-    const response = await plaidClient.linkTokenCreate({
+    const envProducts = (process.env.PLAID_PRODUCTS || 'auth,transactions').split(',');
+    const requiredProducts = envProducts.filter(p => p !== 'liabilities');
+    const optionalProducts = envProducts.includes('liabilities') ? ['liabilities'] : undefined;
+
+    const tokenParams = {
       user: { client_user_id: 'user_financial_advisor_1' },
       client_name: 'Financial Advisor Agent',
-      products: (process.env.PLAID_PRODUCTS || 'auth,transactions').split(','),
+      products: requiredProducts,
       country_codes: (process.env.PLAID_COUNTRY_CODES || 'US').split(','),
       language: 'en',
-    });
+    };
+
+    if (optionalProducts) {
+      tokenParams.optional_products = optionalProducts;
+    }
+
+    const response = await plaidClient.linkTokenCreate(tokenParams);
     res.json(response.data);
   } catch (error) {
     console.error('[Plaid] Error creating link token:', error.response ? error.response.data : error.message);
