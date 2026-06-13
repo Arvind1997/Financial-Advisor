@@ -358,10 +358,17 @@ async function getLiveCryptoUSDValues(holdings) {
     else if (displayAsset === 'ETH') price = 3480.00;
     
     if (queryPair) {
-      const tickerKey = Object.keys(prices).find(k => 
-        k.toUpperCase() === queryPair.toUpperCase() || 
-        k.endsWith(queryPair)
-      );
+      const tickerKey = Object.keys(prices).find(k => {
+        const upperKey = k.toUpperCase();
+        const upperAsset = asset.toUpperCase();
+        const display = displayAsset.toUpperCase();
+        return (
+          upperKey === queryPair.toUpperCase() ||
+          upperKey === upperAsset ||
+          upperKey.includes(display) ||
+          upperKey.includes(upperAsset.replace(/^X/, ''))
+        );
+      });
       if (tickerKey && prices[tickerKey]) {
         price = parseFloat(prices[tickerKey].c[0]);
       }
