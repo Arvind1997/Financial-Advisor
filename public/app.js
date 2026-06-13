@@ -123,11 +123,25 @@ document.addEventListener('DOMContentLoaded', () => {
                             totalCash += balance;
                         }
 
+                        let metaText = `${acc.subtype.toUpperCase()} •••• ${acc.mask}`;
+                        if (acc.apr !== undefined && acc.apr !== null) {
+                            metaText += ` • ${acc.apr}% APR`;
+                        }
+                        if (acc.nextPaymentDueDate) {
+                            try {
+                                const dueDate = new Date(acc.nextPaymentDueDate + 'T00:00:00');
+                                const formattedDate = dueDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
+                                metaText += ` • Due ${formattedDate}`;
+                            } catch (e) {
+                                metaText += ` • Due ${acc.nextPaymentDueDate}`;
+                            }
+                        }
+
                         accountsHtml += `
                             <div class="account-row-card">
                                 <div class="acc-info">
                                     <span class="acc-name">${acc.name}</span>
-                                    <span class="acc-meta">${acc.subtype.toUpperCase()} •••• ${acc.mask}</span>
+                                    <span class="acc-meta">${metaText}</span>
                                 </div>
                                 <div class="acc-balance-container">
                                     <span class="acc-val ${isLiability ? 'credit-neg' : ''}">

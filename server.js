@@ -193,7 +193,20 @@ app.get('/api/balances', async (req, res) => {
     }
 
     try {
-      const response = await plaidClient.accountsBalanceGet({ access_token: token });
+      let accountsData = [];
+      let liabilitiesData = null;
+      let isLiabilitiesFetch = false;
+
+      try {
+        const response = await plaidClient.liabilitiesGet({ access_token: token });
+        accountsData = response.data.accounts;
+        liabilitiesData = response.data.liabilities;
+        isLiabilitiesFetch = true;
+      } catch (liabErr) {
+        console.warn('[Plaid Balance Endpoint] Liabilities API not available or failed. Falling back to balance get:', liabErr.message);
+        const response = await plaidClient.accountsBalanceGet({ access_token: token });
+        accountsData = response.data.accounts;
+      }
       
       // Try to fetch institution metadata
       let institutionName = 'Connected Bank Account';
@@ -211,14 +224,60 @@ app.get('/api/balances', async (req, res) => {
 
       results.push({
         institution: institutionName,
-        accounts: response.data.accounts.map(acc => ({
-          id: acc.account_id,
-          name: acc.name,
-          balance: acc.balances.current,
-          type: acc.type,
-          subtype: acc.subtype,
-          mask: acc.mask
-        }))
+        accounts: accountsData.map(acc => {
+          const isCredit = acc.type === 'credit';
+          const isLoan = acc.type === 'loan';
+          
+          let apr = null;
+          let nextPaymentDueDate = null;
+          let minimumPayment = null;
+          let lastStatementBalance = null;
+
+          if (isLiabilitiesFetch && liabilitiesData) {
+            const accId = acc.account_id;
+            if (isCredit && liabilitiesData.credit) {
+              const card = liabilitiesData.credit.find(c => c.account_id === accId);
+              if (card) {
+                if (card.aprs && card.aprs.length > 0) {
+                  const purchaseApr = card.aprs.find(a => a.apr_type === 'purchase_apr');
+                  apr = purchaseApr ? purchaseApr.apr_percentage : card.aprs[0].apr_percentage;
+                }
+                nextPaymentDueDate = card.next_payment_due_date;
+                minimumPayment = card.minimum_payment_amount;
+                lastStatementBalance = card.last_statement_balance;
+              }
+            } else if (isLoan && liabilitiesData.student) {
+              const studentLoan = liabilitiesData.student.find(s => s.account_id === accId);
+              if (studentLoan) {
+                apr = studentLoan.interest_rate_percentage;
+                nextPaymentDueDate = studentLoan.next_payment_due_date;
+                minimumPayment = studentLoan.minimum_payment_amount;
+              }
+            } else if (isLoan && liabilitiesData.mortgage) {
+              const mortgage = liabilitiesData.mortgage.find(m => m.account_id === accId);
+              if (mortgage) {
+                if (mortgage.interest_rate) {
+                  apr = mortgage.interest_rate.percentage;
+                }
+                nextPaymentDueDate = mortgage.next_payment_due_date;
+                minimumPayment = mortgage.minimum_payment_amount;
+              }
+            }
+          }
+
+          return {
+            id: acc.account_id,
+            name: acc.name,
+            balance: acc.balances.current,
+            type: acc.type,
+            subtype: acc.subtype,
+            mask: acc.mask,
+            apr,
+            nextPaymentDueDate,
+            minimumPayment,
+            lastStatementBalance
+          };
+        })
       });
     } catch (error) {
       console.error('[Plaid] Error fetching balance:', error.response ? error.response.data : error.message);
@@ -484,8 +543,21 @@ async function getAggregatedBankBalances() {
         continue;
       }
       try {
-        const response = await plaidClient.accountsBalanceGet({ access_token: token });
-        
+        let accountsData = [];
+        let liabilitiesData = null;
+        let isLiabilitiesFetch = false;
+
+        try {
+          const response = await plaidClient.liabilitiesGet({ access_token: token });
+          accountsData = response.data.accounts;
+          liabilitiesData = response.data.liabilities;
+          isLiabilitiesFetch = true;
+        } catch (liabErr) {
+          console.warn('[Plaid Balance Aggregator] Liabilities API not available or failed. Falling back to balance get:', liabErr.message);
+          const response = await plaidClient.accountsBalanceGet({ access_token: token });
+          accountsData = response.data.accounts;
+        }
+
         let institutionName = 'Connected Bank Account';
         try {
           const itemResponse = await plaidClient.itemGet({ access_token: token });
@@ -497,10 +569,48 @@ async function getAggregatedBankBalances() {
           institutionName = instResponse.data.institution.name;
         } catch (instErr) {}
 
-        response.data.accounts.forEach(acc => {
+        accountsData.forEach(acc => {
           const balance = acc.balances.current;
           const isCredit = acc.type === 'credit';
           const isLoan = acc.type === 'loan';
+          
+          let apr = null;
+          let nextPaymentDueDate = null;
+          let minimumPayment = null;
+          let lastStatementBalance = null;
+
+          if (isLiabilitiesFetch && liabilitiesData) {
+            const accId = acc.account_id;
+            if (isCredit && liabilitiesData.credit) {
+              const card = liabilitiesData.credit.find(c => c.account_id === accId);
+              if (card) {
+                if (card.aprs && card.aprs.length > 0) {
+                  const purchaseApr = card.aprs.find(a => a.apr_type === 'purchase_apr');
+                  apr = purchaseApr ? purchaseApr.apr_percentage : card.aprs[0].apr_percentage;
+                }
+                nextPaymentDueDate = card.next_payment_due_date;
+                minimumPayment = card.minimum_payment_amount;
+                lastStatementBalance = card.last_statement_balance;
+              }
+            } else if (isLoan && liabilitiesData.student) {
+              const studentLoan = liabilitiesData.student.find(s => s.account_id === accId);
+              if (studentLoan) {
+                apr = studentLoan.interest_rate_percentage;
+                nextPaymentDueDate = studentLoan.next_payment_due_date;
+                minimumPayment = studentLoan.minimum_payment_amount;
+              }
+            } else if (isLoan && liabilitiesData.mortgage) {
+              const mortgage = liabilitiesData.mortgage.find(m => m.account_id === accId);
+              if (mortgage) {
+                if (mortgage.interest_rate) {
+                  apr = mortgage.interest_rate.percentage;
+                }
+                nextPaymentDueDate = mortgage.next_payment_due_date;
+                minimumPayment = mortgage.minimum_payment_amount;
+              }
+            }
+          }
+
           if (isCredit) {
             totalCreditCardDebt += Math.abs(balance);
           } else if (isLoan) {
@@ -508,12 +618,17 @@ async function getAggregatedBankBalances() {
           } else {
             totalCash += balance;
           }
+
           accounts.push({
             name: acc.name,
             balance: balance,
             type: acc.type,
             subtype: acc.subtype,
-            institution: institutionName
+            institution: institutionName,
+            apr: apr,
+            nextPaymentDueDate: nextPaymentDueDate,
+            minimumPayment: minimumPayment,
+            lastStatementBalance: lastStatementBalance
           });
         });
       } catch (e) {
@@ -543,7 +658,11 @@ async function getAggregatedBankBalances() {
         type: acc.type,
         subtype: isCredit ? 'credit card' : (isLoan ? 'loan' : 'manual asset'),
         institution: acc.institution || 'Manual Entry',
-        isManual: true
+        isManual: true,
+        apr: null,
+        nextPaymentDueDate: null,
+        minimumPayment: null,
+        lastStatementBalance: null
       });
     });
   } catch (err) {
