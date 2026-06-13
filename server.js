@@ -609,7 +609,7 @@ app.get('/api/advisor/tips', async (req, res) => {
   }
 
   try {
-    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+    const model = genAI.getGenerativeModel({ model: 'gemini-3.5-flash' });
     const prompt = `
     You are Aura Financial, a premium, fiduciary AI financial advisor agent. 
     Analyze the user's financial profile and generate exactly 3 highly actionable, math-driven financial tips.
@@ -730,7 +730,7 @@ To enable full generative advisory responses, please configure your **GEMINI_API
 
   try {
     const model = genAI.getGenerativeModel({ 
-      model: 'gemini-1.5-flash',
+      model: 'gemini-3.5-flash',
       systemInstruction: systemInstruction
     });
 
