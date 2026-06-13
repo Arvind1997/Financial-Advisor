@@ -458,80 +458,80 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Toggle screens
     function showDashboard() {
-        dashboardView.classList.remove('hidden');
-        chatView.classList.add('hidden');
-        settingsView.classList.add('hidden');
-        transactionsView.classList.add('hidden');
-        accountsView.classList.add('hidden');
-        navChat.classList.remove('active');
-        navSettings.classList.remove('active');
-        navTransactions.classList.remove('active');
-        navAccounts.classList.remove('active');
-        navDashboard.classList.add('active');
-        viewTitle.textContent = 'Overview';
+        if (dashboardView) dashboardView.classList.remove('hidden');
+        if (chatView) chatView.classList.add('hidden');
+        if (settingsView) settingsView.classList.add('hidden');
+        if (transactionsView) transactionsView.classList.add('hidden');
+        if (accountsView) accountsView.classList.add('hidden');
+        if (navChat) navChat.classList.remove('active');
+        if (navSettings) navSettings.classList.remove('active');
+        if (navTransactions) navTransactions.classList.remove('active');
+        if (navAccounts) navAccounts.classList.remove('active');
+        if (navDashboard) navDashboard.classList.add('active');
+        if (viewTitle) viewTitle.textContent = 'Overview';
     }
-
+ 
     function showChat() {
-        dashboardView.classList.add('hidden');
-        chatView.classList.remove('hidden');
-        settingsView.classList.add('hidden');
-        transactionsView.classList.add('hidden');
-        accountsView.classList.add('hidden');
-        navDashboard.classList.remove('active');
-        navSettings.classList.remove('active');
-        navTransactions.classList.remove('active');
-        navAccounts.classList.remove('active');
-        navChat.classList.add('active');
-        viewTitle.textContent = 'AI Financial Advisor';
-
+        if (dashboardView) dashboardView.classList.add('hidden');
+        if (chatView) chatView.classList.remove('hidden');
+        if (settingsView) settingsView.classList.add('hidden');
+        if (transactionsView) transactionsView.classList.add('hidden');
+        if (accountsView) accountsView.classList.add('hidden');
+        if (navDashboard) navDashboard.classList.remove('active');
+        if (navSettings) navSettings.classList.remove('active');
+        if (navTransactions) navTransactions.classList.remove('active');
+        if (navAccounts) navAccounts.classList.remove('active');
+        if (navChat) navChat.classList.add('active');
+        if (viewTitle) viewTitle.textContent = 'AI Financial Advisor';
+ 
         // Sync mini-metrics
-        chatCashVal.textContent = formatCurrency(totalCash);
-        chatCryptoVal.textContent = formatCurrency(totalCrypto);
-        chatCreditVal.textContent = formatCurrency(totalCredit);
+        if (chatCashVal) chatCashVal.textContent = formatCurrency(totalCash);
+        if (chatCryptoVal) chatCryptoVal.textContent = formatCurrency(totalCrypto);
+        if (chatCreditVal) chatCreditVal.textContent = formatCurrency(totalCredit);
     }
-
+ 
     function showSettings() {
-        dashboardView.classList.add('hidden');
-        chatView.classList.add('hidden');
-        settingsView.classList.remove('hidden');
-        transactionsView.classList.add('hidden');
-        accountsView.classList.add('hidden');
-        navDashboard.classList.remove('active');
-        navChat.classList.remove('active');
-        navTransactions.classList.remove('active');
-        navAccounts.classList.remove('active');
-        navSettings.classList.add('active');
-        viewTitle.textContent = 'Settings & Profile';
+        if (dashboardView) dashboardView.classList.add('hidden');
+        if (chatView) chatView.classList.add('hidden');
+        if (settingsView) settingsView.classList.remove('hidden');
+        if (transactionsView) transactionsView.classList.add('hidden');
+        if (accountsView) accountsView.classList.add('hidden');
+        if (navDashboard) navDashboard.classList.remove('active');
+        if (navChat) navChat.classList.remove('active');
+        if (navTransactions) navTransactions.classList.remove('active');
+        if (navAccounts) navAccounts.classList.remove('active');
+        if (navSettings) navSettings.classList.add('active');
+        if (viewTitle) viewTitle.textContent = 'Settings & Profile';
         fetchManualAccounts();
     }
-
+ 
     function showTransactions() {
-        dashboardView.classList.add('hidden');
-        chatView.classList.add('hidden');
-        settingsView.classList.add('hidden');
-        transactionsView.classList.remove('hidden');
-        accountsView.classList.add('hidden');
-        navDashboard.classList.remove('active');
-        navChat.classList.remove('active');
-        navSettings.classList.remove('active');
-        navAccounts.classList.remove('active');
-        navTransactions.classList.add('active');
-        viewTitle.textContent = 'Transactions Log';
+        if (dashboardView) dashboardView.classList.add('hidden');
+        if (chatView) chatView.classList.add('hidden');
+        if (settingsView) settingsView.classList.add('hidden');
+        if (transactionsView) transactionsView.classList.remove('hidden');
+        if (accountsView) accountsView.classList.add('hidden');
+        if (navDashboard) navDashboard.classList.remove('active');
+        if (navChat) navChat.classList.remove('active');
+        if (navSettings) navSettings.classList.remove('active');
+        if (navAccounts) navAccounts.classList.remove('active');
+        if (navTransactions) navTransactions.classList.add('active');
+        if (viewTitle) viewTitle.textContent = 'Transactions Log';
         loadTransactionsPage();
     }
-
+ 
     function showAccounts() {
-        dashboardView.classList.add('hidden');
-        chatView.classList.add('hidden');
-        settingsView.classList.add('hidden');
-        transactionsView.classList.add('hidden');
-        accountsView.classList.remove('hidden');
-        navDashboard.classList.remove('active');
-        navChat.classList.remove('active');
-        navSettings.classList.remove('active');
-        navTransactions.classList.remove('active');
-        navAccounts.classList.add('active');
-        viewTitle.textContent = 'Accounts & Categories';
+        if (dashboardView) dashboardView.classList.add('hidden');
+        if (chatView) chatView.classList.add('hidden');
+        if (settingsView) settingsView.classList.add('hidden');
+        if (transactionsView) transactionsView.classList.add('hidden');
+        if (accountsView) accountsView.classList.remove('hidden');
+        if (navDashboard) navDashboard.classList.remove('active');
+        if (navChat) navChat.classList.remove('active');
+        if (navSettings) navSettings.classList.remove('active');
+        if (navTransactions) navTransactions.classList.remove('active');
+        if (navAccounts) navAccounts.classList.add('active');
+        if (viewTitle) viewTitle.textContent = 'Accounts & Categories';
         renderAccountsView();
     }
 
@@ -837,7 +837,8 @@ document.addEventListener('DOMContentLoaded', () => {
             const tr = document.createElement('tr');
             const amountClass = tx.type === 'deposit' ? 'deposit' : 'expense';
             const amountSign = tx.type === 'deposit' ? '+' : '-';
-            const categoryClass = tx.category.toLowerCase().replace(/[^a-z0-9]/g, '-');
+            const categoryVal = tx.category || 'General';
+            const categoryClass = categoryVal.toLowerCase().replace(/[^a-z0-9]/g, '-');
             
             const formattedDate = new Date(tx.date + 'T00:00:00').toLocaleDateString('en-US', {
                 month: 'short',
@@ -845,11 +846,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 year: 'numeric',
                 timeZone: 'UTC'
             });
-
+ 
             tr.innerHTML = `
                 <td>${formattedDate}</td>
                 <td style="font-weight: 500;">${tx.name}</td>
-                <td><span class="category-tag ${categoryClass}">${tx.category}</span></td>
+                <td><span class="category-tag ${categoryClass}">${categoryVal}</span></td>
                 <td><span class="tx-type-label">${tx.type}</span></td>
                 <td class="tx-amount ${amountClass}">${amountSign}${formatCurrency(tx.amount)}</td>
             `;
@@ -1027,7 +1028,9 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     navDashboard.addEventListener('click', (e) => { e.preventDefault(); showDashboard(); });
-    navAccounts.addEventListener('click', (e) => { e.preventDefault(); showAccounts(); });
+    if (navAccounts) {
+        navAccounts.addEventListener('click', (e) => { e.preventDefault(); showAccounts(); });
+    }
     navChat.addEventListener('click', (e) => { e.preventDefault(); showChat(); });
     navSettings.addEventListener('click', (e) => { e.preventDefault(); showSettings(); });
     navTransactions.addEventListener('click', (e) => { e.preventDefault(); showTransactions(); });
@@ -1315,6 +1318,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function renderAccountsView() {
+        if (!accountsView) return;
         if (!globalAccounts || globalAccounts.length === 0) {
             return;
         }
@@ -1448,6 +1452,10 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function renderAssetsAllocationChart(cash, crypto) {
+        if (typeof Chart === 'undefined') {
+            console.warn('[Chart] Chart.js is not loaded.');
+            return;
+        }
         const canvas = document.getElementById('assetsAllocationChart');
         if (!canvas) return;
         const ctx = canvas.getContext('2d');
@@ -1499,6 +1507,10 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function renderLiabilitiesAllocationChart(credit, loans) {
+        if (typeof Chart === 'undefined') {
+            console.warn('[Chart] Chart.js is not loaded.');
+            return;
+        }
         const canvas = document.getElementById('liabilitiesAllocationChart');
         if (!canvas) return;
         const ctx = canvas.getContext('2d');

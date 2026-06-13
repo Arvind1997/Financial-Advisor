@@ -58,6 +58,7 @@ if (isPlaidConfigured) {
         'PLAID-CLIENT-ID': process.env.PLAID_CLIENT_ID,
         'PLAID-SECRET': process.env.PLAID_SECRET,
       },
+      timeout: 3000,
     },
   });
   plaidClient = new PlaidApi(configuration);
@@ -146,6 +147,7 @@ app.post('/api/exchange_public_token', async (req, res) => {
 
 // Fetch balances for all linked accounts
 app.get('/api/balances', async (req, res) => {
+  console.log('[API] GET /api/balances called at', new Date().toISOString());
   const flatAccounts = [];
   const errors = [];
   const overrides = db.getAccountOverrides();
@@ -898,6 +900,7 @@ async function fetchRecentTransactions(accessToken) {
 
 // Fetch transactions endpoint
 app.get('/api/transactions', async (req, res) => {
+  console.log('[API] GET /api/transactions called at', new Date().toISOString());
   let allTransactions = [];
   if (!isPlaidConfigured || tokenStore.plaidAccessTokens.length === 0) {
     allTransactions = [
@@ -1375,6 +1378,7 @@ app.delete('/api/account_overrides/:accountId', (req, res) => {
 
 // Get all Plaid connections
 app.get('/api/plaid_connections', async (req, res) => {
+  console.log('[API] GET /api/plaid_connections called at', new Date().toISOString());
   if (!isPlaidConfigured || tokenStore.plaidAccessTokens.length === 0) {
     return res.json([]);
   }
