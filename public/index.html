@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Aura Financial | AI Advisor Dashboard</title>
+    
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- Core Stylesheet -->
+    <link rel="stylesheet" href="style.css">
+    
+    <!-- Plaid Link Javascript SDK -->
+    <script src="https://cdn.plaid.com/link/v2/stable/link-initialize.js"></script>
+</head>
+<body>
+    <div class="glass-bg-container">
+        <div class="glow-orb orb-1"></div>
+        <div class="glow-orb orb-2"></div>
+        <div class="glow-orb orb-3"></div>
+    </div>
+
+    <div class="app-layout">
+        <!-- Sidebar -->
+        <aside class="sidebar">
+            <div class="logo">
+                <i class="fa-solid fa-cube logo-icon"></i>
+                <div class="logo-text">
+                    <span class="logo-title">AURA</span>
+                    <span class="logo-subtitle">FINANCIAL</span>
+                </div>
+            </div>
+            
+            <nav class="nav-menu">
+                <a href="#" class="nav-item active"><i class="fa-solid fa-chart-pie"></i> Dashboard</a>
+                <a href="#" class="nav-item"><i class="fa-solid fa-wallet"></i> Accounts</a>
+                <a href="#" class="nav-item"><i class="fa-solid fa-arrows-rotate"></i> Transactions</a>
+                <a href="#" class="nav-item"><i class="fa-solid fa-robot"></i> Advisor Chat</a>
+                <a href="#" class="nav-item"><i class="fa-solid fa-gears"></i> Settings</a>
+            </nav>
+            
+            <div class="sidebar-footer">
+                <div class="status-indicator">
+                    <span class="pulse-dot green"></span>
+                    <span class="status-label">Agent Engine: Active</span>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <!-- Top Header -->
+            <header class="top-header">
+                <div class="header-left">
+                    <h1>Overview</h1>
+                    <p class="header-date" id="current-date">June 2026</p>
+                </div>
+                
+                <div class="header-right">
+                    <div id="simulated-badge" class="badge badge-warning hidden">
+                        <i class="fa-solid fa-triangle-exclamation"></i> Simulated Sandbox Mode
+                    </div>
+                    <button id="reset-btn" class="btn btn-secondary" title="Reset connected accounts">
+                        <i class="fa-solid fa-rotate-left"></i> Reset
+                    </button>
+                    <div class="profile-avatar">
+                        <img src="https://api.dicebear.com/7.x/bottts-neutral/svg?seed=Aura" alt="User Avatar">
+                    </div>
+                </div>
+            </header>
+
+            <!-- Dashboard Summary Grid -->
+            <section class="summary-grid">
+                <!-- Total Balance Card -->
+                <div class="glass-card main-balance-card">
+                    <div class="card-glow"></div>
+                    <span class="card-category">CONSOLIDATED NET WORTH</span>
+                    <h2 class="net-worth-amount" id="net-worth">$0.00</h2>
+                    
+                    <div class="asset-split-mini">
+                        <div class="split-item">
+                            <span class="label"><i class="fa-solid fa-building-columns"></i> Cash & Checking</span>
+                            <span class="value" id="total-cash">$0.00</span>
+                        </div>
+                        <div class="split-divider"></div>
+                        <div class="split-item">
+                            <span class="label"><i class="fa-brands fa-ethereum"></i> Crypto Assets</span>
+                            <span class="value" id="total-crypto">$0.00</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Portfolio Health Card -->
+                <div class="glass-card status-card">
+                    <h3>Portfolio Allocation</h3>
+                    <div class="bar-chart-container">
+                        <div class="allocation-bar">
+                            <div id="bar-cash" class="bar-segment cash" style="width: 0%"></div>
+                            <div id="bar-crypto" class="bar-segment crypto" style="width: 0%"></div>
+                            <div id="bar-credit" class="bar-segment credit" style="width: 0%"></div>
+                        </div>
+                        <div class="legend">
+                            <div class="legend-item"><span class="dot cash"></span> Cash (<span id="pct-cash">0%</span>)</div>
+                            <div class="legend-item"><span class="dot crypto"></span> Crypto (<span id="pct-crypto">0%</span>)</div>
+                            <div class="legend-item"><span class="dot credit"></span> Credit (<span id="pct-credit">0%</span>)</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Connect CTA Card -->
+                <div class="glass-card actions-card">
+                    <h3>Link New Sources</h3>
+                    <p class="card-desc">Connect traditional banks, brokerages, and exchanges securely.</p>
+                    <div class="btn-group-vertical">
+                        <button id="plaid-link-btn" class="btn btn-primary">
+                            <i class="fa-solid fa-building-columns"></i> Link Bank (Plaid)
+                        </button>
+                        <button id="kraken-link-btn" class="btn btn-accent">
+                            <i class="fa-solid fa-circle-dollar-to-slot"></i> Link Kraken API
+                        </button>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Accounts Section -->
+            <section class="details-section">
+                <!-- Banks Column -->
+                <div class="accounts-column">
+                    <div class="section-title">
+                        <h2>Traditional Accounts</h2>
+                        <span class="count-badge" id="bank-count">0 connected</span>
+                    </div>
+                    
+                    <div class="accounts-list" id="banks-container">
+                        <div class="empty-state">
+                            <i class="fa-solid fa-building-columns"></i>
+                            <p>No bank accounts connected.</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Crypto Column -->
+                <div class="accounts-column">
+                    <div class="section-title">
+                        <h2>Cryptocurrency Holdings</h2>
+                        <span class="count-badge" id="crypto-count">0 connected</span>
+                    </div>
+                    
+                    <div class="accounts-list" id="crypto-container">
+                        <div class="empty-state">
+                            <i class="fa-brands fa-bitcoin"></i>
+                            <p>No cryptocurrency accounts connected.</p>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <!-- Kraken Keys Modal -->
+    <div id="kraken-modal" class="modal-overlay hidden">
+        <div class="glass-card modal-content">
+            <div class="modal-header">
+                <h2>Connect Kraken Account</h2>
+                <button id="close-modal-btn" class="close-btn">&times;</button>
+            </div>
+            <p class="modal-desc">Enter your read-only Kraken API Key and Secret. These credentials are processed securely on your backend node server.</p>
+            
+            <form id="kraken-form">
+                <div class="input-group">
+                    <label for="kraken-key">Kraken API Key</label>
+                    <input type="text" id="kraken-key" required placeholder="Paste your API key here">
+                </div>
+                <div class="input-group">
+                    <label for="kraken-secret">Kraken Private API Secret</label>
+                    <input type="password" id="kraken-secret" required placeholder="Paste your API Secret/Private Key">
+                </div>
+                
+                <div class="modal-actions">
+                    <button type="button" id="kraken-demo-btn" class="btn btn-secondary">Use Simulator Mode</button>
+                    <button type="submit" class="btn btn-accent">Connect Wallet</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Notification Toast -->
+    <div id="toast" class="toast hidden"></div>
+
+    <script src="app.js"></script>
+</body>
+</html>
