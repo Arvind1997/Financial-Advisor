@@ -9,14 +9,22 @@ const { GoogleGenerativeAI } = require('@google/generative-ai');
 // Load environment variables
 dotenv.config();
 
-// Initialize Gemini Client
+// Initialize AI Clients
 const isGeminiConfigured = process.env.GEMINI_API_KEY && process.env.GEMINI_API_KEY !== 'your_gemini_api_key';
+const isGroqConfigured = process.env.GROQ_API_KEY && process.env.GROQ_API_KEY !== 'your_groq_api_key';
+
 let genAI = null;
 if (isGeminiConfigured) {
   genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
   console.log('[Gemini] AI Advisor Engine configured.');
-} else {
-  console.warn('[Gemini] WARNING: GEMINI_API_KEY not set. Running Advisor in Demo Mode.');
+}
+
+if (isGroqConfigured) {
+  console.log('[Groq] AI Advisor Engine configured (Llama 3.1).');
+}
+
+if (!isGeminiConfigured && !isGroqConfigured) {
+  console.warn('[AI Engine] WARNING: Neither GEMINI_API_KEY nor GROQ_API_KEY is set. Running Advisor in Demo Mode.');
 }
 
 const app = express();
@@ -579,7 +587,8 @@ app.get('/api/advisor/tips', async (req, res) => {
 
   const netWorth = (totalCash + totalCrypto) - totalCredit;
 
-  if (!genAI) {
+  // If neither is configured, return mock sandbox tips
+  if (!isGroqConfigured && !isGeminiConfigured) {
     return res.json({
       simulated: true,
       tips: [
@@ -608,52 +617,89 @@ app.get('/api/advisor/tips', async (req, res) => {
     });
   }
 
-  try {
-    const model = genAI.getGenerativeModel({ model: 'gemini-3.5-flash' });
-    const prompt = `
-    You are Aura Financial, a premium, fiduciary AI financial advisor agent. 
-    Analyze the user's financial profile and generate exactly 3 highly actionable, math-driven financial tips.
-    
-    FINANCIAL PROFILE:
-    - Net Worth: ${formatCurrency(netWorth)}
-    - Total Cash Assets: ${formatCurrency(totalCash)}
-    - Total Crypto Assets: ${formatCurrency(totalCrypto)}
-    - Total Credit Liabilities: ${formatCurrency(totalCredit)}
-    - Stored Accounts: ${JSON.stringify(accountsList)}
-    - Crypto Holdings Details: ${JSON.stringify(holdings)}
-    - Recent Transactions: ${JSON.stringify(allTransactions.slice(0, 8))}
-    
-    INSTRUCTIONS:
-    1. Focus on optimizing high-interest debt, saving rate, investment gaps, and subscription leakage.
-    2. Be highly specific and do math based on their actual numbers.
-    3. Return your response in JSON format as a list of exactly 3 items.
-    
-    Format requirements:
-    Return ONLY a JSON array matching this schema (do not wrap in markdown code blocks):
-    [
-      {
-        "id": "insight-1",
-        "type": "danger" | "warning" | "success" | "info",
-        "title": "Short title",
-        "description": "Fiduciary advice with specific numbers...",
-        "chatPrompt": "The question the user would ask to deep-dive into this tip in the chat"
-      }
-    ]
-    `;
-
-    const result = await model.generateContent(prompt);
-    let responseText = result.response.text().trim();
-    
-    // Sanitize in case model wraps it in ```json ... ```
-    if (responseText.startsWith('```')) {
-      responseText = responseText.replace(/^```json/, '').replace(/^```/, '').replace(/```$/, '').trim();
+  const prompt = `
+  You are Aura Financial, a premium, fiduciary AI financial advisor agent. 
+  Analyze the user's financial profile and generate exactly 3 highly actionable, math-driven financial tips.
+  
+  FINANCIAL PROFILE:
+  - Net Worth: ${formatCurrency(netWorth)}
+  - Total Cash Assets: ${formatCurrency(totalCash)}
+  - Total Crypto Assets: ${formatCurrency(totalCrypto)}
+  - Total Credit Liabilities: ${formatCurrency(totalCredit)}
+  - Stored Accounts: ${JSON.stringify(accountsList)}
+  - Crypto Holdings Details: ${JSON.stringify(holdings)}
+  - Recent Transactions: ${JSON.stringify(allTransactions.slice(0, 8))}
+  
+  INSTRUCTIONS:
+  1. Focus on optimizing high-interest debt, saving rate, investment gaps, and subscription leakage.
+  2. Be highly specific and do math based on their actual numbers.
+  3. Return your response in JSON format as a list of exactly 3 items.
+  
+  Format requirements:
+  Return ONLY a JSON array matching this schema (do not wrap in markdown code blocks):
+  [
+    {
+      "id": "insight-1",
+      "type": "danger" | "warning" | "success" | "info",
+      "title": "Short title",
+      "description": "Fiduciary advice with specific numbers...",
+      "chatPrompt": "The question the user would ask to deep-dive into this tip in the chat"
     }
+  ]
+  `;
 
-    const tips = JSON.parse(responseText);
-    res.json({ simulated: false, tips });
-  } catch (err) {
-    console.error('[Gemini Tips Error]', err);
-    res.status(500).json({ error: err.message });
+  // Prioritize Groq
+  if (isGroqConfigured) {
+    try {
+      const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${process.env.GROQ_API_KEY}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          model: 'llama-3.1-8b-instant',
+          messages: [
+            { role: 'system', content: 'You are Aura Financial, a premium fiduciary financial advisor. Return your response in JSON format.' },
+            { role: 'user', content: prompt }
+          ],
+          response_format: { type: 'json_object' }
+        })
+      });
+      
+      const data = await response.json();
+      if (data.error) throw new Error(data.error.message);
+      
+      let responseText = data.choices[0].message.content.trim();
+      const tipsObj = JSON.parse(responseText);
+      const tipsArray = Array.isArray(tipsObj) ? tipsObj : (tipsObj.tips || Object.values(tipsObj)[0]);
+      
+      return res.json({ simulated: false, tips: tipsArray });
+    } catch (err) {
+      console.error('[Groq Tips Error]', err);
+      if (!isGeminiConfigured) {
+        return res.status(500).json({ error: `Groq failed: ${err.message}` });
+      }
+    }
+  }
+
+  // Fallback to Gemini
+  if (isGeminiConfigured) {
+    try {
+      const model = genAI.getGenerativeModel({ model: 'gemini-3.5-flash' });
+      const result = await model.generateContent(prompt);
+      let responseText = result.response.text().trim();
+      
+      if (responseText.startsWith('```')) {
+        responseText = responseText.replace(/^```json/, '').replace(/^```/, '').replace(/```$/, '').trim();
+      }
+
+      const tips = JSON.parse(responseText);
+      res.json({ simulated: false, tips });
+    } catch (err) {
+      console.error('[Gemini Tips Error]', err);
+      res.status(500).json({ error: err.message });
+    }
   }
 });
 
@@ -716,47 +762,81 @@ app.post('/api/advisor/chat', async (req, res) => {
   - Connected Accounts: ${JSON.stringify(bankRes.accounts)}
   `;
 
-  if (!genAI) {
+  if (!isGroqConfigured && !isGeminiConfigured) {
     const lastUserMsg = messages[messages.length - 1].content;
     return res.json({
       content: `**[Demo Mode]** Aura Financial Advisor is running in offline demo mode. 
       
-To enable full generative advisory responses, please configure your **GEMINI_API_KEY** in your local \`.env\` file.
+To enable full generative advisory responses, please configure your **GROQ_API_KEY** or **GEMINI_API_KEY** in your local \`.env\` file.
       
 *Your message was:* "${lastUserMsg}"
 *Current Net Worth Context:* **${formatCurrency(netWorth)}** (${formatCurrency(bankRes.totalCash)} Cash, ${formatCurrency(totalCrypto)} Crypto, ${formatCurrency(bankRes.totalCredit)} Credit Card Debt).`
     });
   }
 
-  try {
-    const model = genAI.getGenerativeModel({ 
-      model: 'gemini-3.5-flash',
-      systemInstruction: systemInstruction
-    });
-
-    const firstUserIndex = messages.findIndex(m => m.role === 'user');
-    let history = [];
-    if (firstUserIndex !== -1) {
-      history = messages.slice(firstUserIndex, -1).map(m => ({
-        role: m.role === 'assistant' ? 'model' : 'user',
-        parts: [{ text: m.content }]
-      }));
-    }
-
-    const lastMessage = messages[messages.length - 1].content;
-
-    const chat = model.startChat({
-      history: history,
-      generationConfig: {
-        maxOutputTokens: 800,
+  // Prioritize Groq
+  if (isGroqConfigured) {
+    try {
+      const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${process.env.GROQ_API_KEY}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          model: 'llama-3.1-8b-instant',
+          messages: [
+            { role: 'system', content: systemInstruction },
+            ...messages.map(m => ({
+              role: m.role === 'assistant' ? 'assistant' : 'user',
+              content: m.content
+            }))
+          ]
+        })
+      });
+      const data = await response.json();
+      if (data.error) throw new Error(data.error.message);
+      return res.json({ content: data.choices[0].message.content });
+    } catch (err) {
+      console.error('[Groq Chat Error]', err);
+      if (!isGeminiConfigured) {
+        return res.status(500).json({ error: `Groq failed: ${err.message}` });
       }
-    });
+    }
+  }
 
-    const result = await chat.sendMessage(lastMessage);
-    res.json({ content: result.response.text() });
-  } catch (err) {
-    console.error('[Gemini Chat Error]', err);
-    res.status(500).json({ error: err.message });
+  // Default to Gemini
+  if (isGeminiConfigured) {
+    try {
+      const model = genAI.getGenerativeModel({ 
+        model: 'gemini-3.5-flash',
+        systemInstruction: systemInstruction
+      });
+
+      const firstUserIndex = messages.findIndex(m => m.role === 'user');
+      let history = [];
+      if (firstUserIndex !== -1) {
+        history = messages.slice(firstUserIndex, -1).map(m => ({
+          role: m.role === 'assistant' ? 'model' : 'user',
+          parts: [{ text: m.content }]
+        }));
+      }
+
+      const lastMessage = messages[messages.length - 1].content;
+
+      const chat = model.startChat({
+        history: history,
+        generationConfig: {
+          maxOutputTokens: 800,
+        }
+      });
+
+      const result = await chat.sendMessage(lastMessage);
+      res.json({ content: result.response.text() });
+    } catch (err) {
+      console.error('[Gemini Chat Error]', err);
+      res.status(500).json({ error: err.message });
+    }
   }
 });
 
