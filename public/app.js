@@ -237,6 +237,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 simulatedBadge.classList.add('hidden');
             }
 
+            // Load AI Advisor recommendations
+            fetchAdvisorTips();
+
         } catch (err) {
             console.error('Error fetching dashboard data:', err);
             showToast('Failed to fetch account metrics.', 'error');
@@ -368,18 +371,220 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
+    // --- AI ADVISOR INSIGHTS & CHAT IMPLEMENTATION ---
+    const insightsContainer = document.getElementById('insights-container');
+    const dashboardView = document.getElementById('dashboard-view');
+    const chatView = document.getElementById('chat-view');
+    const navDashboard = document.getElementById('nav-dashboard');
+    const navChat = document.getElementById('nav-chat');
+    const backToDashboardBtn = document.getElementById('back-to-dashboard-btn');
+    const viewTitle = document.getElementById('view-title');
+
+    // Chat sidebar elements
+    const chatCashVal = document.getElementById('chat-cash-val');
+    const chatCryptoVal = document.getElementById('chat-crypto-val');
+    const chatCreditVal = document.getElementById('chat-credit-val');
+
+    // Chat state
+    let chatMessages = [
+        { role: 'assistant', content: 'Hello! I am Aura, your fiduciary AI advisor. I have analyzed your accounts and recent transactions. You can select one of the tips from the dashboard, or type a question below to analyze your expenses, savings, liabilities, or crypto portfolio allocation.' }
+    ];
+
+    const chatHistoryEl = document.getElementById('chat-history');
+    const chatForm = document.getElementById('chat-form');
+    const chatInput = document.getElementById('chat-input');
+    const sendChatBtn = document.getElementById('send-chat-btn');
+
+    // Toggle screens
+    function showDashboard() {
+        dashboardView.classList.remove('hidden');
+        chatView.classList.add('hidden');
+        navChat.classList.remove('active');
+        navDashboard.classList.add('active');
+        viewTitle.textContent = 'Overview';
+    }
+
+    function showChat() {
+        dashboardView.classList.add('hidden');
+        chatView.classList.remove('hidden');
+        navDashboard.classList.remove('active');
+        navChat.classList.add('active');
+        viewTitle.textContent = 'AI Financial Advisor';
+
+        // Sync mini-metrics
+        chatCashVal.textContent = formatCurrency(totalCash);
+        chatCryptoVal.textContent = formatCurrency(totalCrypto);
+        chatCreditVal.textContent = formatCurrency(totalCredit);
+    }
+
+    // Render message bubbles in chat
+    function renderMessage(role, content) {
+        const msgEl = document.createElement('div');
+        msgEl.className = `chat-message ${role}`;
+        
+        let formattedContent = content;
+        if (role === 'assistant') {
+            formattedContent = content
+                .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+                .replace(/\*(.*?)\*/g, '<em>$1</em>')
+                .replace(/\n/g, '<br>')
+                .replace(/- (.*?)(<br>|$)/g, '<li>$1</li>')
+                .replace(/(<li>.*?<\/li>)+/g, '<ul>$&</ul>');
+        } else {
+            formattedContent = `<p>${content}</p>`;
+        }
+
+        msgEl.innerHTML = `<div class="message-content">${formattedContent}</div>`;
+        chatHistoryEl.appendChild(msgEl);
+        chatHistoryEl.scrollTop = chatHistoryEl.scrollHeight;
+    }
+
+    // Send chat message to backend
+    async function sendChatMessage(userText) {
+        if (!userText) return;
+        
+        chatInput.disabled = true;
+        sendChatBtn.disabled = true;
+
+        renderMessage('user', userText);
+        chatMessages.push({ role: 'user', content: userText });
+
+        const typingEl = document.createElement('div');
+        typingEl.className = 'chat-message assistant typing-indicator';
+        typingEl.innerHTML = `<div class="message-content"><span class="loading-pulse">Aura is thinking...</span></div>`;
+        chatHistoryEl.appendChild(typingEl);
+        chatHistoryEl.scrollTop = chatHistoryEl.scrollHeight;
+
+        try {
+            const res = await fetch('/api/advisor/chat', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ messages: chatMessages })
+            });
+            const data = await res.json();
+            
+            typingEl.remove();
+
+            if (data.content) {
+                renderMessage('assistant', data.content);
+                chatMessages.push({ role: 'assistant', content: data.content });
+            } else if (data.error) {
+                renderMessage('assistant', `Error: ${data.error}`);
+            }
+        } catch (e) {
+            typingEl.remove();
+            renderMessage('assistant', 'Sorry, I encountered an error communicating with the agent.');
+        } finally {
+            chatInput.disabled = false;
+            sendChatBtn.disabled = false;
+            chatInput.focus();
+        }
+    }
+
+    // Fetch and render daily tips
+    async function fetchAdvisorTips() {
+        insightsContainer.innerHTML = `
+            <div class="insight-card-shimmer">
+                <div class="shimmer-pulse" style="width: 40%; height: 16px; margin-bottom: 1rem; border-radius: 4px;"></div>
+                <div class="shimmer-pulse" style="width: 90%; height: 12px; margin-bottom: 0.5rem; border-radius: 4px;"></div>
+                <div class="shimmer-pulse" style="width: 70%; height: 12px; border-radius: 4px;"></div>
+            </div>
+            <div class="insight-card-shimmer">
+                <div class="shimmer-pulse" style="width: 45%; height: 16px; margin-bottom: 1rem; border-radius: 4px;"></div>
+                <div class="shimmer-pulse" style="width: 85%; height: 12px; margin-bottom: 0.5rem; border-radius: 4px;"></div>
+                <div class="shimmer-pulse" style="width: 65%; height: 12px; border-radius: 4px;"></div>
+            </div>
+            <div class="insight-card-shimmer">
+                <div class="shimmer-pulse" style="width: 35%; height: 16px; margin-bottom: 1rem; border-radius: 4px;"></div>
+                <div class="shimmer-pulse" style="width: 90%; height: 12px; margin-bottom: 0.5rem; border-radius: 4px;"></div>
+                <div class="shimmer-pulse" style="width: 60%; height: 12px; border-radius: 4px;"></div>
+            </div>
+        `;
+
+        try {
+            const res = await fetch('/api/advisor/tips');
+            const data = await res.json();
+            
+            insightsContainer.innerHTML = '';
+            if (data.tips && data.tips.length > 0) {
+                data.tips.forEach(tip => {
+                    const card = document.createElement('div');
+                    card.className = `insight-card ${tip.type}`;
+                    
+                    let icon = 'fa-solid fa-circle-exclamation';
+                    if (tip.type === 'danger') icon = 'fa-solid fa-triangle-exclamation';
+                    else if (tip.type === 'warning') icon = 'fa-solid fa-circle-info';
+                    else if (tip.type === 'info') icon = 'fa-solid fa-lightbulb';
+                    else if (tip.type === 'success') icon = 'fa-solid fa-circle-check';
+
+                    card.innerHTML = `
+                        <div>
+                            <div class="insight-title"><i class="${icon}"></i> ${tip.title}</div>
+                            <div class="insight-desc">${tip.description}</div>
+                        </div>
+                        <div class="insight-action-hint">
+                            <i class="fa-solid fa-comment-dots"></i> Ask Advisor Deep-Dive
+                        </div>
+                    `;
+
+                    // Click handler to launch chat deep-dive
+                    card.addEventListener('click', () => {
+                        showChat();
+                        
+                        chatHistoryEl.innerHTML = '';
+                        chatMessages = [
+                            { role: 'assistant', content: `You selected the tip: **${tip.title}**.\n\n*${tip.description}*` }
+                        ];
+                        renderMessage('assistant', chatMessages[0].content);
+                        
+                        sendChatMessage(tip.chatPrompt);
+                    });
+
+                    insightsContainer.appendChild(card);
+                });
+            } else {
+                insightsContainer.innerHTML = `
+                    <div class="empty-state" style="grid-column: span 3; padding: 2rem;">
+                        <i class="fa-solid fa-wand-magic-sparkles" style="font-size: 1.5rem; margin-bottom: 0.5rem;"></i>
+                        <p>No new financial recommendations at this time.</p>
+                    </div>
+                `;
+            }
+        } catch (e) {
+            console.error('Error fetching tips:', e);
+            insightsContainer.innerHTML = `
+                <div class="empty-state" style="grid-column: span 3; padding: 2rem; border-color: var(--accent-rose);">
+                    <i class="fa-solid fa-triangle-exclamation" style="color:var(--accent-rose); font-size:1.5rem; margin-bottom:0.5rem;"></i>
+                    <p>Failed to load recommendations.</p>
+                </div>
+            `;
+        }
+    }
+
     // Event Listeners
     plaidLinkBtn.addEventListener('click', initPlaidLink);
     krakenLinkBtn.addEventListener('click', openKrakenModal);
     closeModalBtn.addEventListener('click', closeKrakenModal);
     
-    // Close modal on outside click
     window.addEventListener('click', (e) => {
         if (e.target === krakenModal) {
             closeKrakenModal();
         }
     });
 
+    navDashboard.addEventListener('click', (e) => { e.preventDefault(); showDashboard(); });
+    navChat.addEventListener('click', (e) => { e.preventDefault(); showChat(); });
+    backToDashboardBtn.addEventListener('click', showDashboard);
+
+    chatForm.addEventListener('submit', (e) => {
+        e.preventDefault();
+        const text = chatInput.value.trim();
+        if (!text) return;
+        chatInput.value = '';
+        sendChatMessage(text);
+    });
+
     // Initial load
     fetchDashboardData();
 });
+

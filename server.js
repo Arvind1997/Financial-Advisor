@@ -4,9 +4,20 @@ const path = require('path');
 const crypto = require('crypto');
 const querystring = require('querystring');
 const { Configuration, PlaidApi, PlaidEnvironments } = require('plaid');
+const { GoogleGenerativeAI } = require('@google/generative-ai');
 
 // Load environment variables
 dotenv.config();
+
+// Initialize Gemini Client
+const isGeminiConfigured = process.env.GEMINI_API_KEY && process.env.GEMINI_API_KEY !== 'your_gemini_api_key';
+let genAI = null;
+if (isGeminiConfigured) {
+  genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+  console.log('[Gemini] AI Advisor Engine configured.');
+} else {
+  console.warn('[Gemini] WARNING: GEMINI_API_KEY not set. Running Advisor in Demo Mode.');
+}
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -383,6 +394,367 @@ async function getLiveCryptoUSDValues(holdings) {
     };
   });
 }
+
+// Helper to format currency values
+const formatCurrency = (val) => {
+  return new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: 'USD'
+  }).format(val);
+};
+
+// Helper to aggregate balances across all connected Plaid bank accounts
+async function getAggregatedBankBalances() {
+  let totalCash = 0;
+  let totalCredit = 0;
+  const accounts = [];
+
+  if (!isPlaidConfigured || tokenStore.plaidAccessTokens.length === 0) {
+    return {
+      totalCash: 30430.82,
+      totalCredit: 1254.30,
+      accounts: [
+        { name: 'Total Checking', balance: 5430.82, type: 'depository', subtype: 'checking' },
+        { name: 'Sapphire Preferred', balance: -1254.30, type: 'credit', subtype: 'credit card' },
+        { name: 'Online Savings', balance: 25000.00, type: 'depository', subtype: 'savings' }
+      ]
+    };
+  }
+
+  for (const token of tokenStore.plaidAccessTokens) {
+    if (token.startsWith('access-sandbox-')) {
+      totalCash += 7500.00;
+      accounts.push({ name: 'Simulated Checking', balance: 7500.00, type: 'depository', subtype: 'checking' });
+      continue;
+    }
+    try {
+      const response = await plaidClient.accountsBalanceGet({ access_token: token });
+      response.data.accounts.forEach(acc => {
+        const balance = acc.balances.current;
+        const isCredit = acc.type === 'credit';
+        if (isCredit) {
+          totalCredit += Math.abs(balance);
+        } else {
+          totalCash += balance;
+        }
+        accounts.push({
+          name: acc.name,
+          balance: balance,
+          type: acc.type,
+          subtype: acc.subtype
+        });
+      });
+    } catch (e) {
+      console.warn('[Plaid Balance Aggregator Error]', e.message);
+    }
+  }
+
+  return { totalCash, totalCredit, accounts };
+}
+
+// Helper to pull recent transactions for a Plaid access token
+async function fetchRecentTransactions(accessToken) {
+  if (accessToken.startsWith('access-sandbox-')) {
+    return [
+      { date: new Date().toISOString().split('T')[0], name: 'Mock Sandbox Cafe', amount: 8.50, category: 'Food & Drink', type: 'expense' },
+      { date: new Date(Date.now() - 86400000).toISOString().split('T')[0], name: 'Mock Sandbox Rent', amount: 1200.00, category: 'Rent', type: 'expense' }
+    ];
+  }
+  try {
+    const now = new Date();
+    const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+    const start = thirtyDaysAgo.toISOString().split('T')[0];
+    const end = now.toISOString().split('T')[0];
+
+    const response = await plaidClient.transactionsGet({
+      access_token: accessToken,
+      start_date: start,
+      end_date: end,
+      options: { count: 10 }
+    });
+    
+    return response.data.transactions.map(t => ({
+      date: t.date,
+      name: t.name,
+      amount: Math.abs(t.amount),
+      category: t.category ? t.category[0] : 'General',
+      type: t.amount > 0 ? 'expense' : 'deposit'
+    }));
+  } catch (e) {
+    console.warn('[Plaid Transactions Error]', e.message);
+    return [];
+  }
+}
+
+// Fetch transactions endpoint
+app.get('/api/transactions', async (req, res) => {
+  let allTransactions = [];
+  if (!isPlaidConfigured || tokenStore.plaidAccessTokens.length === 0) {
+    allTransactions = [
+      { date: '2026-06-12', name: 'Starbucks Coffee', amount: 5.42, category: 'Food & Drink', type: 'expense' },
+      { date: '2026-06-11', name: 'Uber Trip', amount: 24.50, category: 'Travel', type: 'expense' },
+      { date: '2026-06-10', name: 'Netflix Subscription', amount: 15.49, category: 'Entertainment', type: 'expense' },
+      { date: '2026-06-08', name: 'Whole Foods Market', amount: 112.30, category: 'Groceries', type: 'expense' },
+      { date: '2026-06-05', name: 'Landlord Rent Payment', amount: 2200.00, category: 'Rent', type: 'expense' },
+      { date: '2026-06-01', name: 'Employer Payroll Deposit', amount: 4500.00, category: 'Income', type: 'deposit' }
+    ];
+    return res.json({ transactions: allTransactions, simulated: true });
+  }
+
+  for (const token of tokenStore.plaidAccessTokens) {
+    const txs = await fetchRecentTransactions(token);
+    allTransactions.push(...txs);
+  }
+  
+  allTransactions.sort((a, b) => new Date(b.date) - new Date(a.date));
+  res.json({ transactions: allTransactions.slice(0, 10), simulated: false });
+});
+
+// Fetch proactive Advisor Tips using Gemini
+app.get('/api/advisor/tips', async (req, res) => {
+  let totalCash = 0;
+  let totalCredit = 0;
+  let totalCrypto = 0;
+  let holdings = [];
+  let accountsList = [];
+
+  const bankRes = await getAggregatedBankBalances();
+  totalCash = bankRes.totalCash;
+  totalCredit = bankRes.totalCredit;
+  accountsList = bankRes.accounts;
+
+  const keys = getKrakenKeys();
+  let cryptoSimulated = false;
+  if (!keys) {
+    const mockHoldings = { 'XXBT': 0.65, 'XETH': 4.5, 'USDT': 1250.0 };
+    holdings = await getLiveCryptoUSDValues(mockHoldings);
+    cryptoSimulated = true;
+  } else {
+    try {
+      const path = '/0/private/Balance';
+      const nonce = Date.now().toString();
+      const requestData = { nonce };
+      const signature = getKrakenSignature(path, requestData, keys.secret);
+      
+      const response = await fetch('https://api.kraken.com' + path, {
+        method: 'POST',
+        headers: {
+          'API-Key': keys.key,
+          'API-Sign': signature,
+          'Content-Type': 'application/x-www-form-urlencoded'
+        },
+        body: querystring.stringify(requestData)
+      });
+      const data = await response.json();
+      if (data.result) {
+        const rawHoldings = {};
+        for (const [asset, amountStr] of Object.entries(data.result)) {
+          const amount = parseFloat(amountStr);
+          if (amount > 0) rawHoldings[asset] = amount;
+        }
+        holdings = await getLiveCryptoUSDValues(rawHoldings);
+      }
+    } catch (e) {
+      console.warn('[Kraken Balance Error]', e.message);
+    }
+  }
+  totalCrypto = holdings.reduce((sum, h) => sum + h.value, 0);
+
+  let allTransactions = [];
+  if (!isPlaidConfigured || tokenStore.plaidAccessTokens.length === 0) {
+    allTransactions = [
+      { date: '2026-06-12', name: 'Starbucks Coffee', amount: 5.42, category: 'Food & Drink', type: 'expense' },
+      { date: '2026-06-11', name: 'Uber Trip', amount: 24.50, category: 'Travel', type: 'expense' },
+      { date: '2026-06-10', name: 'Netflix Subscription', amount: 15.49, category: 'Entertainment', type: 'expense' },
+      { date: '2026-06-08', name: 'Whole Foods Market', amount: 112.30, category: 'Groceries', type: 'expense' },
+      { date: '2026-06-05', name: 'Landlord Rent Payment', amount: 2200.00, category: 'Rent', type: 'expense' },
+      { date: '2026-06-01', name: 'Employer Payroll Deposit', amount: 4500.00, category: 'Income', type: 'deposit' }
+    ];
+  } else {
+    for (const token of tokenStore.plaidAccessTokens) {
+      const txs = await fetchRecentTransactions(token);
+      allTransactions.push(...txs);
+    }
+  }
+
+  const netWorth = (totalCash + totalCrypto) - totalCredit;
+
+  if (!genAI) {
+    return res.json({
+      simulated: true,
+      tips: [
+        {
+          id: 'tip-1',
+          type: 'danger',
+          title: 'Optimize Interest Threat',
+          description: `You have ${formatCurrency(totalCredit)} in credit card liabilities (such as Sapphire Preferred). Pay this off using your Online Savings cash balance immediately to secure a guaranteed return against card interest.`,
+          chatPrompt: `Explain how paying off my credit card liability of ${formatCurrency(totalCredit)} from savings is better than keeping it in cash.`
+        },
+        {
+          id: 'tip-2',
+          type: 'warning',
+          title: 'Review Crypto Asset Allocation',
+          description: `Your cash savings stand at ${formatCurrency(totalCash)}, while your crypto assets (such as Kraken) value is ${formatCurrency(totalCrypto)}. Evaluate if this risk ratio matches your targets.`,
+          chatPrompt: `Analyze my cash-to-crypto ratio of ${formatCurrency(totalCash)} vs ${formatCurrency(totalCrypto)} and suggest rebalancing ideas.`
+        },
+        {
+          id: 'tip-3',
+          type: 'info',
+          title: 'Track Daily Expense Trends',
+          description: `We detected food, travel, and subscription expenses in your transactions. I recommend setting up an automated weekly budget cap of $150 on dining out.`,
+          chatPrompt: `Analyze my recent expenses and help me draft a weekly budget cap strategy.`
+        }
+      ]
+    });
+  }
+
+  try {
+    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+    const prompt = `
+    You are Aura Financial, a premium, fiduciary AI financial advisor agent. 
+    Analyze the user's financial profile and generate exactly 3 highly actionable, math-driven financial tips.
+    
+    FINANCIAL PROFILE:
+    - Net Worth: ${formatCurrency(netWorth)}
+    - Total Cash Assets: ${formatCurrency(totalCash)}
+    - Total Crypto Assets: ${formatCurrency(totalCrypto)}
+    - Total Credit Liabilities: ${formatCurrency(totalCredit)}
+    - Stored Accounts: ${JSON.stringify(accountsList)}
+    - Crypto Holdings Details: ${JSON.stringify(holdings)}
+    - Recent Transactions: ${JSON.stringify(allTransactions.slice(0, 8))}
+    
+    INSTRUCTIONS:
+    1. Focus on optimizing high-interest debt, saving rate, investment gaps, and subscription leakage.
+    2. Be highly specific and do math based on their actual numbers.
+    3. Return your response in JSON format as a list of exactly 3 items.
+    
+    Format requirements:
+    Return ONLY a JSON array matching this schema (do not wrap in markdown code blocks):
+    [
+      {
+        "id": "insight-1",
+        "type": "danger" | "warning" | "success" | "info",
+        "title": "Short title",
+        "description": "Fiduciary advice with specific numbers...",
+        "chatPrompt": "The question the user would ask to deep-dive into this tip in the chat"
+      }
+    ]
+    `;
+
+    const result = await model.generateContent(prompt);
+    let responseText = result.response.text().trim();
+    
+    // Sanitize in case model wraps it in ```json ... ```
+    if (responseText.startsWith('```')) {
+      responseText = responseText.replace(/^```json/, '').replace(/^```/, '').replace(/```$/, '').trim();
+    }
+
+    const tips = JSON.parse(responseText);
+    res.json({ simulated: false, tips });
+  } catch (err) {
+    console.error('[Gemini Tips Error]', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Interactive Advisor Chat Endpoint
+app.post('/api/advisor/chat', async (req, res) => {
+  const { messages } = req.body;
+  if (!messages || !Array.isArray(messages)) {
+    return res.status(400).json({ error: 'Messages array is required' });
+  }
+
+  const bankRes = await getAggregatedBankBalances();
+  const keys = getKrakenKeys();
+  let holdings = [];
+  if (!keys) {
+    holdings = [
+      { asset: 'BTC', amount: 0.65, price: 65000, value: 42250 },
+      { asset: 'ETH', amount: 4.5, price: 3500, value: 15750 },
+      { asset: 'USDT', amount: 1250.0, price: 1.0, value: 1250.0 }
+    ];
+  } else {
+    try {
+      const path = '/0/private/Balance';
+      const nonce = Date.now().toString();
+      const requestData = { nonce };
+      const signature = getKrakenSignature(path, requestData, keys.secret);
+      const response = await fetch('https://api.kraken.com' + path, {
+        method: 'POST',
+        headers: {
+          'API-Key': keys.key,
+          'API-Sign': signature,
+          'Content-Type': 'application/x-www-form-urlencoded'
+        },
+        body: querystring.stringify(requestData)
+      });
+      const data = await response.json();
+      if (data.result) {
+        const rawHoldings = {};
+        for (const [asset, amountStr] of Object.entries(data.result)) {
+          const amount = parseFloat(amountStr);
+          if (amount > 0) rawHoldings[asset] = amount;
+        }
+        holdings = await getLiveCryptoUSDValues(rawHoldings);
+      }
+    } catch (e) {}
+  }
+  const totalCrypto = holdings.reduce((sum, h) => sum + h.value, 0);
+  const netWorth = (bankRes.totalCash + totalCrypto) - bankRes.totalCredit;
+
+  const systemInstruction = `
+  You are Aura Financial, a premium, fiduciary AI financial advisor agent. 
+  You are chatting with the user about their financial health. 
+  Provide objective, clear, math-driven financial advice. Reference their actual holdings, assets, and debt numbers whenever possible.
+  Always format your responses cleanly in Markdown. Keep your tone professional, advisory, and helpful.
+  
+  FINANCIAL PROFILE:
+  - Net Worth: ${formatCurrency(netWorth)}
+  - Total Cash Assets: ${formatCurrency(bankRes.totalCash)}
+  - Total Crypto Assets: ${formatCurrency(totalCrypto)} (Holdings: ${JSON.stringify(holdings)})
+  - Total Credit Debt (Liabilities): ${formatCurrency(bankRes.totalCredit)}
+  - Connected Accounts: ${JSON.stringify(bankRes.accounts)}
+  `;
+
+  if (!genAI) {
+    const lastUserMsg = messages[messages.length - 1].content;
+    return res.json({
+      content: `**[Demo Mode]** Aura Financial Advisor is running in offline demo mode. 
+      
+To enable full generative advisory responses, please configure your **GEMINI_API_KEY** in your local \`.env\` file.
+      
+*Your message was:* "${lastUserMsg}"
+*Current Net Worth Context:* **${formatCurrency(netWorth)}** (${formatCurrency(bankRes.totalCash)} Cash, ${formatCurrency(totalCrypto)} Crypto, ${formatCurrency(bankRes.totalCredit)} Credit Card Debt).`
+    });
+  }
+
+  try {
+    const model = genAI.getGenerativeModel({ 
+      model: 'gemini-1.5-flash',
+      systemInstruction: systemInstruction
+    });
+
+    const history = messages.slice(0, -1).map(m => ({
+      role: m.role === 'assistant' ? 'model' : 'user',
+      parts: [{ text: m.content }]
+    }));
+
+    const lastMessage = messages[messages.length - 1].content;
+
+    const chat = model.startChat({
+      history: history,
+      generationConfig: {
+        maxOutputTokens: 800,
+      }
+    });
+
+    const result = await chat.sendMessage(lastMessage);
+    res.json({ content: result.response.text() });
+  } catch (err) {
+    console.error('[Gemini Chat Error]', err);
+    res.status(500).json({ error: err.message });
+  }
+});
 
 // Reset Endpoint (for demo reset)
 app.post('/api/reset', (req, res) => {
