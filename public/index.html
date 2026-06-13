@@ -118,7 +118,7 @@
                             <div class="legend">
                                 <div class="legend-item"><span class="dot cash"></span> Cash (<span id="pct-cash">0%</span>)</div>
                                 <div class="legend-item"><span class="dot crypto"></span> Crypto (<span id="pct-crypto">0%</span>)</div>
-                                <div class="legend-item"><span class="dot credit"></span> Credit (<span id="pct-credit">0%</span>)</div>
+                                <div class="legend-item"><span class="dot credit"></span> Liabilities (<span id="pct-credit">0%</span>)</div>
                             </div>
                         </div>
                     </div>
@@ -241,7 +241,7 @@
                                 <span id="chat-crypto-val" style="color:var(--accent-cyan); font-weight: 700;">$0.00</span>
                             </div>
                             <div class="metric-mini-row">
-                                <span>Credit Debt</span>
+                                <span>Total Debt</span>
                                 <span id="chat-credit-val" style="color:var(--accent-rose); font-weight: 700;">$0.00</span>
                             </div>
                         </div>
@@ -376,7 +376,8 @@
                                     <label for="manual-type">Account Type</label>
                                     <select id="manual-type" required>
                                         <option value="depository">Asset (Checking, Savings, Cash)</option>
-                                        <option value="credit">Liability (Credit Card, Loan, BNPL)</option>
+                                        <option value="credit">Liability - Credit Card / BNPL</option>
+                                        <option value="loan">Liability - Loan (Student, Mortgage, Auto)</option>
                                     </select>
                                 </div>
                             </div>

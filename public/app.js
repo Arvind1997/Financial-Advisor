@@ -528,7 +528,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const displayBalance = formatCurrency(acc.balance);
             const isLiability = acc.type === 'credit' || acc.type === 'loan';
             const balanceClass = (isLiability || acc.balance < 0) ? 'credit-neg' : '';
-            const typeBadge = isLiability ? 'Liability' : 'Asset';
+            const typeBadge = isLiability ? (acc.type === 'loan' ? 'Liability (Loan)' : 'Liability (Credit)') : 'Asset';
 
             tr.innerHTML = `
                 <td style="font-weight: 500;">${acc.name}</td>

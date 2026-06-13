@@ -169,7 +169,7 @@ app.get('/api/balances', async (req, res) => {
             name: acc.name,
             balance: acc.balance,
             type: acc.type,
-            subtype: acc.type === 'credit' ? 'credit card' : 'manual asset',
+            subtype: acc.type === 'credit' ? 'credit card' : (acc.type === 'loan' ? 'loan' : 'manual asset'),
             mask: 'MANUAL',
             isManual: true
           }))
@@ -237,7 +237,7 @@ app.get('/api/balances', async (req, res) => {
           name: acc.name,
           balance: acc.balance,
           type: acc.type,
-          subtype: acc.type === 'credit' ? 'credit card' : 'manual asset',
+          subtype: acc.type === 'credit' ? 'credit card' : (acc.type === 'loan' ? 'loan' : 'manual asset'),
           mask: 'MANUAL',
           isManual: true
         }))
@@ -462,13 +462,15 @@ const formatCurrency = (val) => {
 // Helper to aggregate balances across all connected Plaid bank accounts & Manual accounts
 async function getAggregatedBankBalances() {
   let totalCash = 0;
-  let totalCredit = 0;
+  let totalCreditCardDebt = 0;
+  let totalLoanDebt = 0;
   const accounts = [];
 
   if (!isPlaidConfigured || tokenStore.plaidAccessTokens.length === 0) {
     // Simulator defaults
     totalCash = 30430.82;
-    totalCredit = 1254.30;
+    totalCreditCardDebt = 1254.30;
+    totalLoanDebt = 0;
     accounts.push(
       { name: 'Total Checking', balance: 5430.82, type: 'depository', subtype: 'checking', institution: 'Chase Bank' },
       { name: 'Sapphire Preferred', balance: -1254.30, type: 'credit', subtype: 'credit card', institution: 'Chase Bank' },
@@ -497,9 +499,12 @@ async function getAggregatedBankBalances() {
 
         response.data.accounts.forEach(acc => {
           const balance = acc.balances.current;
-          const isLiability = acc.type === 'credit' || acc.type === 'loan';
-          if (isLiability) {
-            totalCredit += Math.abs(balance);
+          const isCredit = acc.type === 'credit';
+          const isLoan = acc.type === 'loan';
+          if (isCredit) {
+            totalCreditCardDebt += Math.abs(balance);
+          } else if (isLoan) {
+            totalLoanDebt += Math.abs(balance);
           } else {
             totalCash += balance;
           }
@@ -521,10 +526,13 @@ async function getAggregatedBankBalances() {
   try {
     const manualAccounts = db.getManualAccounts();
     manualAccounts.forEach(acc => {
-      const isLiability = acc.type === 'credit' || acc.type === 'loan';
+      const isCredit = acc.type === 'credit';
+      const isLoan = acc.type === 'loan';
       const balance = acc.balance;
-      if (isLiability) {
-        totalCredit += Math.abs(balance);
+      if (isCredit) {
+        totalCreditCardDebt += Math.abs(balance);
+      } else if (isLoan) {
+        totalLoanDebt += Math.abs(balance);
       } else {
         totalCash += balance;
       }
@@ -533,7 +541,7 @@ async function getAggregatedBankBalances() {
         name: acc.name,
         balance: balance,
         type: acc.type,
-        subtype: isLiability ? (acc.type === 'loan' ? 'loan' : 'credit card') : 'manual asset',
+        subtype: isCredit ? 'credit card' : (isLoan ? 'loan' : 'manual asset'),
         institution: acc.institution || 'Manual Entry',
         isManual: true
       });
@@ -542,7 +550,8 @@ async function getAggregatedBankBalances() {
     console.error('[Manual Accounts Aggregator Error]', err.message);
   }
 
-  return { totalCash, totalCredit, accounts };
+  const totalCredit = totalCreditCardDebt + totalLoanDebt;
+  return { totalCash, totalCredit, totalCreditCardDebt, totalLoanDebt, accounts };
 }
 
 // Helper to pull recent transactions for a Plaid access token
@@ -607,6 +616,8 @@ app.get('/api/transactions', async (req, res) => {
 app.get('/api/advisor/tips', async (req, res) => {
   let totalCash = 0;
   let totalCredit = 0;
+  let totalCreditCardDebt = 0;
+  let totalLoanDebt = 0;
   let totalCrypto = 0;
   let holdings = [];
   let accountsList = [];
@@ -614,6 +625,8 @@ app.get('/api/advisor/tips', async (req, res) => {
   const bankRes = await getAggregatedBankBalances();
   totalCash = bankRes.totalCash;
   totalCredit = bankRes.totalCredit;
+  totalCreditCardDebt = bankRes.totalCreditCardDebt;
+  totalLoanDebt = bankRes.totalLoanDebt;
   accountsList = bankRes.accounts;
 
   const keys = getKrakenKeys();
@@ -695,8 +708,12 @@ app.get('/api/advisor/tips', async (req, res) => {
           id: 'tip-1',
           type: 'danger',
           title: 'Optimize Interest Threat',
-          description: `You have ${formatCurrency(totalCredit)} in credit card liabilities (such as Sapphire Preferred). Pay this off using your Online Savings cash balance immediately to secure a guaranteed return against card interest.`,
-          chatPrompt: `Explain how paying off my credit card liability of ${formatCurrency(totalCredit)} from savings is better than keeping it in cash.`
+          description: totalCreditCardDebt > 0 
+            ? `You have ${formatCurrency(totalCreditCardDebt)} in credit card liabilities. Pay this off using your savings immediately to avoid high interest charges.`
+            : `You have ${formatCurrency(totalLoanDebt)} in loan liabilities (such as student loans). Ensure your repayments are structured to minimize overall interest.`,
+          chatPrompt: totalCreditCardDebt > 0 
+            ? `Explain how paying off my credit card liability of ${formatCurrency(totalCreditCardDebt)} from savings is better than keeping it in cash.`
+            : `Explain how to optimize interest rates on student/other loans totaling ${formatCurrency(totalLoanDebt)}.`
         },
         {
           id: 'tip-2',
@@ -729,7 +746,9 @@ app.get('/api/advisor/tips', async (req, res) => {
   - Net Worth: ${formatCurrency(netWorth)}
   - Total Cash Assets: ${formatCurrency(totalCash)}
   - Total Crypto Assets: ${formatCurrency(totalCrypto)}
-  - Total Liabilities (Credit Cards & Loans): ${formatCurrency(totalCredit)}
+  - Total Credit Card Debt: ${formatCurrency(totalCreditCardDebt)}
+  - Total Student/Mortgage/Auto Loan Debt: ${formatCurrency(totalLoanDebt)}
+  - Total Combined Liabilities (Debt): ${formatCurrency(totalCredit)}
   - Stored Accounts: ${JSON.stringify(accountsList)}
   - Crypto Holdings Details: ${JSON.stringify(holdings)}
   - Recent Transactions: ${JSON.stringify(allTransactions.slice(0, 8))}
@@ -872,7 +891,9 @@ app.post('/api/advisor/chat', async (req, res) => {
   - Net Worth: ${formatCurrency(netWorth)}
   - Total Cash Assets: ${formatCurrency(bankRes.totalCash)}
   - Total Crypto Assets: ${formatCurrency(totalCrypto)} (Holdings: ${JSON.stringify(holdings)})
-  - Total Debt/Liabilities (Credit Cards & Loans): ${formatCurrency(bankRes.totalCredit)}
+  - Total Credit Card Debt: ${formatCurrency(bankRes.totalCreditCardDebt)}
+  - Total Student/Mortgage/Auto Loan Debt: ${formatCurrency(bankRes.totalLoanDebt)}
+  - Total Combined Liabilities (Debt): ${formatCurrency(bankRes.totalCredit)}
   - Connected Accounts: ${JSON.stringify(bankRes.accounts)}
   - Historical Net Worth Trend (Daily Snapshots): ${JSON.stringify(history)}
 
@@ -889,7 +910,7 @@ app.post('/api/advisor/chat', async (req, res) => {
 To enable full generative advisory responses, please configure your **GROQ_API_KEY** or **GEMINI_API_KEY** in your local \`.env\` file.
       
 *Your message was:* "${lastUserMsg}"
-*Current Net Worth Context:* **${formatCurrency(netWorth)}** (${formatCurrency(bankRes.totalCash)} Cash, ${formatCurrency(totalCrypto)} Crypto, ${formatCurrency(bankRes.totalCredit)} Total Debt/Liabilities).`
+*Current Net Worth Context:* **${formatCurrency(netWorth)}** (${formatCurrency(bankRes.totalCash)} Cash, ${formatCurrency(totalCrypto)} Crypto, ${formatCurrency(bankRes.totalCreditCardDebt)} Credit Card Debt, ${formatCurrency(bankRes.totalLoanDebt)} Loan Debt).`
     });
   }
 
