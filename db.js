@@ -11,7 +11,8 @@ const DEFAULT_SCHEMA = {
   },
   plaidAccessTokens: [],
   krakenCredentials: null,
-  history: []
+  history: [],
+  manualAccounts: []
 };
 
 // Helper to safely read database
@@ -130,6 +131,37 @@ module.exports = {
 
     writeDb(db);
     return db.history;
+  },
+
+  getManualAccounts() {
+    const db = readDb();
+    return db.manualAccounts || [];
+  },
+
+  addManualAccount(account) {
+    const db = readDb();
+    if (!db.manualAccounts) {
+      db.manualAccounts = [];
+    }
+    const newAccount = {
+      id: account.id || `manual-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+      name: account.name,
+      institution: account.institution || 'Manual Entry',
+      balance: Number(account.balance) || 0,
+      type: account.type || 'depository' // depository (asset) or credit (liability)
+    };
+    db.manualAccounts.push(newAccount);
+    writeDb(db);
+    return newAccount;
+  },
+
+  deleteManualAccount(id) {
+    const db = readDb();
+    if (db.manualAccounts) {
+      db.manualAccounts = db.manualAccounts.filter(acc => acc.id !== id);
+      writeDb(db);
+    }
+    return db.manualAccounts || [];
   },
 
   clearAll() {

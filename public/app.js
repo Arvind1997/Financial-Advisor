@@ -399,6 +399,15 @@ document.addEventListener('DOMContentLoaded', () => {
     const settingsSalary = document.getElementById('settings-salary');
     const settingsPayFrequency = document.getElementById('settings-pay-frequency');
 
+    // Manual accounts elements
+    const manualAccountForm = document.getElementById('manual-account-form');
+    const manualName = document.getElementById('manual-name');
+    const manualInstitution = document.getElementById('manual-institution');
+    const manualBalance = document.getElementById('manual-balance');
+    const manualType = document.getElementById('manual-type');
+    const manualAccountsListBody = document.getElementById('manual-accounts-list-body');
+    const manualEmptyState = document.getElementById('manual-empty-state');
+
     // Transactions elements
     const txTableBody = document.getElementById('transactions-table-body');
     const txSearch = document.getElementById('tx-search');
@@ -462,6 +471,7 @@ document.addEventListener('DOMContentLoaded', () => {
         navTransactions.classList.remove('active');
         navSettings.classList.add('active');
         viewTitle.textContent = 'Settings & Profile';
+        fetchManualAccounts();
     }
 
     function showTransactions() {
@@ -491,6 +501,67 @@ document.addEventListener('DOMContentLoaded', () => {
             if (radio) radio.checked = true;
         } catch (e) {
             console.error('Error fetching settings:', e);
+        }
+    }
+
+    // Manual accounts logic
+    async function fetchManualAccounts() {
+        try {
+            const res = await fetch('/api/manual_accounts');
+            const accounts = await res.json();
+            renderManualAccountsList(accounts);
+        } catch (err) {
+            console.error('[Manual accounts] Load failed:', err);
+        }
+    }
+
+    function renderManualAccountsList(accounts) {
+        manualAccountsListBody.innerHTML = '';
+        if (!accounts || accounts.length === 0) {
+            manualEmptyState.classList.remove('hidden');
+            return;
+        }
+        manualEmptyState.classList.add('hidden');
+
+        accounts.forEach(acc => {
+            const tr = document.createElement('tr');
+            const displayBalance = formatCurrency(acc.balance);
+            const balanceClass = acc.balance < 0 ? 'credit-neg' : '';
+            const typeBadge = acc.type === 'credit' ? 'Liability (Credit)' : 'Asset';
+
+            tr.innerHTML = `
+                <td style="font-weight: 500;">${acc.name}</td>
+                <td>${acc.institution}</td>
+                <td><span class="tx-type-label">${typeBadge}</span></td>
+                <td class="${balanceClass}" style="font-weight: 700;">${displayBalance}</td>
+                <td>
+                    <button class="btn-delete-manual" data-id="${acc.id}">
+                        <i class="fa-solid fa-trash-can"></i>
+                    </button>
+                </td>
+            `;
+
+            tr.querySelector('.btn-delete-manual').addEventListener('click', async () => {
+                if (confirm(`Are you sure you want to delete "${acc.name}"?`)) {
+                    await deleteManualAccount(acc.id);
+                }
+            });
+
+            manualAccountsListBody.appendChild(tr);
+        });
+    }
+
+    async function deleteManualAccount(id) {
+        try {
+            const res = await fetch(`/api/manual_accounts/${id}`, { method: 'DELETE' });
+            const data = await res.json();
+            if (data.success) {
+                showToast('Manual account deleted.', 'success');
+                fetchManualAccounts();
+                fetchDashboardData();
+            }
+        } catch (err) {
+            showToast('Delete failed.', 'error');
         }
     }
 
@@ -946,8 +1017,38 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
+    manualAccountForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const name = manualName.value.trim();
+        const institution = manualInstitution.value.trim() || 'Manual Entry';
+        const balance = parseFloat(manualBalance.value) || 0;
+        const type = manualType.value;
+
+        showToast('Adding manual account...', 'info');
+
+        try {
+            const res = await fetch('/api/manual_accounts', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name, institution, balance, type })
+            });
+            const data = await res.json();
+            showToast('Manual account added!', 'success');
+            
+            manualName.value = '';
+            manualInstitution.value = '';
+            manualBalance.value = '';
+            
+            fetchManualAccounts();
+            fetchDashboardData();
+        } catch (err) {
+            showToast('Failed to add manual account.', 'error');
+        }
+    });
+
     // Initial load
     fetchProfileSettings();
+    fetchManualAccounts();
     fetchDashboardData();
 });
 

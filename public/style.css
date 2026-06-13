@@ -1693,3 +1693,19 @@ body {
         padding: 1.5rem;
     }
 }
+
+.btn-delete-manual {
+    background: transparent;
+    color: var(--accent-rose);
+    border: 1px solid rgba(239, 68, 68, 0.25);
+    padding: 0.35rem 0.55rem;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: var(--transition-smooth);
+}
+
+.btn-delete-manual:hover {
+    background: rgba(239, 68, 68, 0.15);
+    border-color: rgba(239, 68, 68, 0.5);
+    box-shadow: 0 0 10px rgba(239, 68, 68, 0.25);
+}

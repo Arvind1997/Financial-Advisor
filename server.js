@@ -157,6 +157,26 @@ app.get('/api/balances', async (req, res) => {
         ]
       }
     ];
+
+    // Merge manual accounts
+    try {
+      const manualAccounts = db.getManualAccounts();
+      if (manualAccounts.length > 0) {
+        mockAccounts.push({
+          institution: 'Manual Accounts',
+          accounts: manualAccounts.map(acc => ({
+            id: acc.id,
+            name: acc.name,
+            balance: acc.balance,
+            type: acc.type,
+            subtype: acc.type === 'credit' ? 'credit card' : 'manual asset',
+            mask: 'MANUAL',
+            isManual: true
+          }))
+        });
+      }
+    } catch (err) {}
+
     return res.json({ accounts: mockAccounts, simulated: tokenStore.plaidAccessTokens.length === 0 });
   }
 
@@ -204,6 +224,27 @@ app.get('/api/balances', async (req, res) => {
       console.error('[Plaid] Error fetching balance:', error.response ? error.response.data : error.message);
       errors.push(error.message);
     }
+  }
+
+  // Merge manual accounts
+  try {
+    const manualAccounts = db.getManualAccounts();
+    if (manualAccounts.length > 0) {
+      results.push({
+        institution: 'Manual Accounts',
+        accounts: manualAccounts.map(acc => ({
+          id: acc.id,
+          name: acc.name,
+          balance: acc.balance,
+          type: acc.type,
+          subtype: acc.type === 'credit' ? 'credit card' : 'manual asset',
+          mask: 'MANUAL',
+          isManual: true
+        }))
+      });
+    }
+  } catch (err) {
+    console.error('[Balances manual merge error]', err.message);
   }
 
   res.json({ accounts: results, errors });
@@ -418,50 +459,87 @@ const formatCurrency = (val) => {
   }).format(val);
 };
 
-// Helper to aggregate balances across all connected Plaid bank accounts
+// Helper to aggregate balances across all connected Plaid bank accounts & Manual accounts
 async function getAggregatedBankBalances() {
   let totalCash = 0;
   let totalCredit = 0;
   const accounts = [];
 
   if (!isPlaidConfigured || tokenStore.plaidAccessTokens.length === 0) {
-    return {
-      totalCash: 30430.82,
-      totalCredit: 1254.30,
-      accounts: [
-        { name: 'Total Checking', balance: 5430.82, type: 'depository', subtype: 'checking' },
-        { name: 'Sapphire Preferred', balance: -1254.30, type: 'credit', subtype: 'credit card' },
-        { name: 'Online Savings', balance: 25000.00, type: 'depository', subtype: 'savings' }
-      ]
-    };
+    // Simulator defaults
+    totalCash = 30430.82;
+    totalCredit = 1254.30;
+    accounts.push(
+      { name: 'Total Checking', balance: 5430.82, type: 'depository', subtype: 'checking', institution: 'Chase Bank' },
+      { name: 'Sapphire Preferred', balance: -1254.30, type: 'credit', subtype: 'credit card', institution: 'Chase Bank' },
+      { name: 'Online Savings', balance: 25000.00, type: 'depository', subtype: 'savings', institution: 'Marcus by Goldman Sachs' }
+    );
+  } else {
+    for (const token of tokenStore.plaidAccessTokens) {
+      if (token.startsWith('access-sandbox-')) {
+        totalCash += 7500.00;
+        accounts.push({ name: 'Simulated Checking', balance: 7500.00, type: 'depository', subtype: 'checking', institution: 'Simulated Bank Account' });
+        continue;
+      }
+      try {
+        const response = await plaidClient.accountsBalanceGet({ access_token: token });
+        
+        let institutionName = 'Connected Bank Account';
+        try {
+          const itemResponse = await plaidClient.itemGet({ access_token: token });
+          const instId = itemResponse.data.item.institution_id;
+          const instResponse = await plaidClient.institutionsGetById({
+            institution_id: instId,
+            country_codes: (process.env.PLAID_COUNTRY_CODES || 'US').split(',')
+          });
+          institutionName = instResponse.data.institution.name;
+        } catch (instErr) {}
+
+        response.data.accounts.forEach(acc => {
+          const balance = acc.balances.current;
+          const isCredit = acc.type === 'credit';
+          if (isCredit) {
+            totalCredit += Math.abs(balance);
+          } else {
+            totalCash += balance;
+          }
+          accounts.push({
+            name: acc.name,
+            balance: balance,
+            type: acc.type,
+            subtype: acc.subtype,
+            institution: institutionName
+          });
+        });
+      } catch (e) {
+        console.warn('[Plaid Balance Aggregator Error]', e.message);
+      }
+    }
   }
 
-  for (const token of tokenStore.plaidAccessTokens) {
-    if (token.startsWith('access-sandbox-')) {
-      totalCash += 7500.00;
-      accounts.push({ name: 'Simulated Checking', balance: 7500.00, type: 'depository', subtype: 'checking' });
-      continue;
-    }
-    try {
-      const response = await plaidClient.accountsBalanceGet({ access_token: token });
-      response.data.accounts.forEach(acc => {
-        const balance = acc.balances.current;
-        const isCredit = acc.type === 'credit';
-        if (isCredit) {
-          totalCredit += Math.abs(balance);
-        } else {
-          totalCash += balance;
-        }
-        accounts.push({
-          name: acc.name,
-          balance: balance,
-          type: acc.type,
-          subtype: acc.subtype
-        });
+  // Merge manual accounts
+  try {
+    const manualAccounts = db.getManualAccounts();
+    manualAccounts.forEach(acc => {
+      const isCredit = acc.type === 'credit';
+      const balance = acc.balance;
+      if (isCredit) {
+        totalCredit += Math.abs(balance);
+      } else {
+        totalCash += balance;
+      }
+      accounts.push({
+        id: acc.id,
+        name: acc.name,
+        balance: balance,
+        type: acc.type,
+        subtype: isCredit ? 'credit card' : 'manual asset',
+        institution: acc.institution || 'Manual Entry',
+        isManual: true
       });
-    } catch (e) {
-      console.warn('[Plaid Balance Aggregator Error]', e.message);
-    }
+    });
+  } catch (err) {
+    console.error('[Manual Accounts Aggregator Error]', err.message);
   }
 
   return { totalCash, totalCredit, accounts };
@@ -912,6 +990,30 @@ app.post('/api/profile', (req, res) => {
 // Get Net Worth balance history
 app.get('/api/history', (req, res) => {
   res.json(db.getHistory());
+});
+
+// --- MANUAL ACCOUNTS ENDPOINTS ---
+
+// Get all manual accounts
+app.get('/api/manual_accounts', (req, res) => {
+  res.json(db.getManualAccounts());
+});
+
+// Add a manual account
+app.post('/api/manual_accounts', (req, res) => {
+  const { name, institution, balance, type } = req.body;
+  if (!name || balance === undefined || !type) {
+    return res.status(400).json({ error: 'Name, balance, and type are required' });
+  }
+  const newAcc = db.addManualAccount({ name, institution, balance, type });
+  res.json(newAcc);
+});
+
+// Delete a manual account
+app.delete('/api/manual_accounts/:id', (req, res) => {
+  const { id } = req.params;
+  const updated = db.deleteManualAccount(id);
+  res.json({ success: true, accounts: updated });
 });
 
 // Start the server

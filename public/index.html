@@ -344,6 +344,73 @@
                             </div>
                         </form>
                     </div>
+
+                    <!-- Manual Accounts Card -->
+                    <div class="glass-card settings-card" style="margin-top: 2rem;">
+                        <div class="settings-header">
+                            <i class="fa-solid fa-wallet settings-header-icon" style="color: var(--accent-amber); background: rgba(245, 158, 11, 0.1); border-color: rgba(245, 158, 11, 0.25);"></i>
+                            <div>
+                                <h2 style="font-size: 1.5rem; font-weight: 700; color: var(--text-primary);">Manual Accounts & Liabilities</h2>
+                                <p class="settings-subtitle">Manage unsupported assets or debts (e.g. Klarna, Bilt card manually, cash, jewelry) to reflect in your net worth.</p>
+                            </div>
+                        </div>
+
+                        <!-- Add manual account form -->
+                        <form id="manual-account-form">
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label for="manual-name">Account Name</label>
+                                    <input type="text" id="manual-name" required placeholder="e.g. Klarna Debt">
+                                </div>
+                                <div class="form-group">
+                                    <label for="manual-institution">Institution / Provider</label>
+                                    <input type="text" id="manual-institution" placeholder="e.g. Klarna">
+                                </div>
+                            </div>
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label for="manual-balance">Balance / Debt ($)</label>
+                                    <input type="number" id="manual-balance" required step="0.01" placeholder="e.g. -250.00 (Negative for debt)">
+                                </div>
+                                <div class="form-group">
+                                    <label for="manual-type">Account Type</label>
+                                    <select id="manual-type" required>
+                                        <option value="depository">Asset (Checking, Savings, Cash)</option>
+                                        <option value="credit">Liability (Credit Card, Loan, BNPL)</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="settings-actions" style="border: none; padding: 0; margin-top: 1rem;">
+                                <button type="submit" class="btn btn-accent" id="add-manual-btn" style="background: var(--accent-amber); box-shadow: 0 4px 15px rgba(245,158,11,0.3); border-color: rgba(245,158,11,0.2);">
+                                    <i class="fa-solid fa-plus"></i> Add Account
+                                </button>
+                            </div>
+                        </form>
+
+                        <!-- List of manual accounts -->
+                        <div style="margin-top: 2.5rem; border-top: 1px solid rgba(255,255,255,0.06); padding-top: 1.5rem;">
+                            <h3 style="font-size: 1.1rem; font-weight: 700; color: var(--text-primary);">Your Manual Accounts</h3>
+                            <div class="table-container" style="margin-top: 1rem;">
+                                <table class="transactions-table" style="font-size: 0.9rem;">
+                                    <thead>
+                                        <tr>
+                                            <th>Account</th>
+                                            <th>Institution</th>
+                                            <th>Type</th>
+                                            <th>Balance</th>
+                                            <th>Action</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="manual-accounts-list-body">
+                                        <!-- Rendered dynamically -->
+                                    </tbody>
+                                </table>
+                                <div id="manual-empty-state" class="empty-state" style="padding: 1.5rem 0;">
+                                    <p style="font-size: 0.85rem; color: var(--text-secondary);">No manual accounts added yet.</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
 
